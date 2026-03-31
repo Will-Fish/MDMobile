@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where:*)",
+      "Bash(echo:*)",
+      "Bash(gradle:*)",
+      "Bash(./gradlew build:*)",
+      "Bash(dir:*)",
+      "Bash(python:*)",
+      "Bash(./gradlew assembleDebug:*)",
+      "Bash(gradlew.bat assembleDebug:*)",
+      "Bash(curl:*)",
+      "Bash(xxd:*)",
+      "Bash(java:*)",
+      "Bash(chmod:*)",
+      "Bash(cmd /c:*)",
+      "Bash(.gradlew.bat:*)",
+      "Bash(./gradlew:*)",
+      "Bash(ls:*)",
+      "Bash(cmd //c \"gradlew.bat build\")",
+      "Bash(./gradlew.bat assembleDebug:*)"
+    ]
+  }
+}

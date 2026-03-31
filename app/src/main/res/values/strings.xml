@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MDMobile</string>
+    <string name="home">首页</string>
+    <string name="files">文件</string>
+    <string name="bookmarks">书签</string>
+    <string name="settings">设置</string>
+    <string name="no_files">暂无文件</string>
+    <string name="search_hint">搜索文件...</string>
+    <string name="open">打开</string>
+    <string name="add_bookmark">添加书签</string>
+    <string name="remove_bookmark">移除书签</string>
+    <string name="no_bookmarks">暂无书签</string>
+    <string name="theme">主题</string>
+    <string name="light">浅色</string>
+    <string name="dark">深色</string>
+    <string name="auto">自动</string>
+    <string name="font_size">字体大小</string>
+    <string name="default_folder">默认文件夹</string>
+    <string name="select_folder">选择文件夹</string>
+    <string name="permission_required">需要存储权限</string>
+    <string name="permission_explanation">MDMobile需要访问您的文件以显示和管理Markdown文档</string>
+    <string name="grant_permission">授予权限</string>
+    <string name="recent_files">最近文件</string>
+    <string name="all_files">全部文件</string>
+    <string name="sort_by_name">按名称排序</string>
+    <string name="sort_by_date">按日期排序</string>
+    <string name="markdown_editor">Markdown编辑器</string>
+    <string name="save">保存</string>
+    <string name="cancel">取消</string>
+    <string name="privacy_policy">隐私政策</string>
+    <string name="about">关于</string>
+    <string name="theme_settings">主题设置</string>
+    <string name="default_folder_settings">默认文件夹</string>
+    <string name="privacy_policy_content">隐私政策内容...</string>
+    <string name="back">返回</string>
+</resources>
