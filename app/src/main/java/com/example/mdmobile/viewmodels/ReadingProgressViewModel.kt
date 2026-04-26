@@ -31,6 +31,10 @@ class ReadingProgressViewModel(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private var allProgressObserved = false
+    private var recentFilesObserved = false
+    private var recentlyReadObserved = false
+
     init {
         loadAllProgress()
         loadRecentFiles()
@@ -38,6 +42,8 @@ class ReadingProgressViewModel(
     }
 
     fun loadAllProgress() {
+        if (allProgressObserved) return
+        allProgressObserved = true
         viewModelScope.launch {
             _isLoading.value = true
             progressRepository.getAllProgress().collect { progressList ->
@@ -48,6 +54,8 @@ class ReadingProgressViewModel(
     }
 
     fun loadRecentFiles() {
+        if (recentFilesObserved) return
+        recentFilesObserved = true
         viewModelScope.launch {
             progressRepository.getRecentFiles().collect { recentFiles ->
                 _recentFiles.value = recentFiles
@@ -56,6 +64,8 @@ class ReadingProgressViewModel(
     }
 
     fun loadRecentlyRead() {
+        if (recentlyReadObserved) return
+        recentlyReadObserved = true
         viewModelScope.launch {
             progressRepository.getRecentlyRead().collect { recentlyRead ->
                 _recentlyRead.value = recentlyRead
@@ -65,30 +75,18 @@ class ReadingProgressViewModel(
 
     suspend fun saveProgress(progress: ReadingProgress) {
         progressRepository.saveProgress(progress)
-        loadAllProgress()
-        loadRecentFiles()
-        loadRecentlyRead()
     }
 
     suspend fun updateProgress(progress: ReadingProgress) {
         progressRepository.updateProgress(progress)
-        loadAllProgress()
-        loadRecentFiles()
-        loadRecentlyRead()
     }
 
     suspend fun deleteProgress(progress: ReadingProgress) {
         progressRepository.deleteProgress(progress)
-        loadAllProgress()
-        loadRecentFiles()
-        loadRecentlyRead()
     }
 
     suspend fun deleteProgressByFilePath(filePath: String) {
         progressRepository.deleteProgressByFilePath(filePath)
-        loadAllProgress()
-        loadRecentFiles()
-        loadRecentlyRead()
     }
 
     suspend fun getProgressByFilePath(filePath: String): ReadingProgress? {
@@ -108,11 +106,7 @@ class ReadingProgressViewModel(
             position = position,
             percentage = percentage,
             totalLines = totalLines
-        ).also {
-            loadAllProgress()
-            loadRecentFiles()
-            loadRecentlyRead()
-        }
+        )
     }
 
     suspend fun updateReadingProgress(
@@ -129,23 +123,14 @@ class ReadingProgressViewModel(
             totalContentHeight = totalContentHeight,
             visibleHeight = visibleHeight
         )
-        loadAllProgress()
-        loadRecentFiles()
-        loadRecentlyRead()
     }
 
     suspend fun updateLastAccessed(filePath: String) {
         progressRepository.updateLastAccessed(filePath)
-        loadAllProgress()
-        loadRecentFiles()
-        loadRecentlyRead()
     }
 
     suspend fun markAsCompleted(filePath: String, completed: Boolean = true) {
         progressRepository.markAsCompleted(filePath, completed)
-        loadAllProgress()
-        loadRecentFiles()
-        loadRecentlyRead()
     }
 
     companion object {

@@ -1,187 +1,240 @@
 package com.example.mdmobile.ui.screens
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PrivacyTip
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavController
 import com.example.mdmobile.R
+import com.example.mdmobile.data.model.ThemeMode
+import com.example.mdmobile.data.model.UserPreferences
+import com.example.mdmobile.utils.FileUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    navController: NavController
+    userPreferences: UserPreferences,
+    onUpdateThemeMode: (ThemeMode) -> Unit,
+    onUpdateFontSize: (Int) -> Unit,
+    onUpdateDefaultFolder: (String?) -> Unit,
+    onPrivacyPolicyClick: () -> Unit
 ) {
+    var showCustomPathDialog by remember { mutableStateOf(false) }
+    var customPath by remember(userPreferences.defaultFolder) {
+        mutableStateOf(userPreferences.defaultFolder.orEmpty())
+    }
+
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text(text = stringResource(id = R.string.settings)) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
-                    }
-                },
+                title = { Text(stringResource(R.string.settings), fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
-        },
-        modifier = Modifier.statusBarsPadding()
+        }
     ) { paddingValues ->
-        Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
+        LazyColumn(
+            modifier = Modifier.padding(paddingValues),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            LazyColumn(
-                modifier = Modifier.padding(16.dp)
-            ) {
-                item {
+            item {
+                SettingsCard(
+                    icon = Icons.Default.Palette,
+                    title = "配色模式",
+                    subtitle = "在浅色、深色和跟随系统之间切换"
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ThemeMode.entries.forEach { mode ->
+                            FilterChip(
+                                selected = userPreferences.themeMode == mode,
+                                onClick = { onUpdateThemeMode(mode) },
+                                label = {
+                                    Text(
+                                        when (mode) {
+                                            ThemeMode.LIGHT -> stringResource(R.string.light)
+                                            ThemeMode.DARK -> stringResource(R.string.dark)
+                                            ThemeMode.AUTO -> stringResource(R.string.auto)
+                                        }
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                SettingsCard(
+                    icon = Icons.Default.TextFields,
+                    title = "阅读字号",
+                    subtitle = "更大更轻松，或更小更紧凑"
+                ) {
                     Text(
-                        text = "偏好设置",
-                        style = MaterialTheme.typography.headlineMedium,
-                        modifier = Modifier.padding(bottom = 16.dp)
+                        text = "${userPreferences.fontSize}px",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
                     )
-                }
-
-                // 主题设置
-                item {
-                    SettingCategory(title = "显示")
-                }
-                item {
-                    SettingItem(
-                        icon = Icons.Default.Palette,
-                        title = stringResource(id = R.string.theme_settings),
-                        subtitle = "调整应用主题",
-                        onClick = {
-                            // 导航到主题设置页面
-                        }
-                    )
-                }
-
-                // 文件夹设置
-                item {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    SettingCategory(title = "文件")
-                }
-                item {
-                    SettingItem(
-                        icon = Icons.Default.Folder,
-                        title = stringResource(id = R.string.default_folder_settings),
-                        subtitle = "未设置",
-                        onClick = {
-                            // 导航到文件夹选择
-                        }
-                    )
-                }
-
-                // 关于和隐私
-                item {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    SettingCategory(title = "关于")
-                }
-                item {
-                    SettingItem(
-                        icon = Icons.Default.PrivacyTip,
-                        title = stringResource(id = R.string.privacy_policy),
-                        subtitle = "查看隐私政策",
-                        onClick = {
-                            navController.navigate("privacy_policy")
-                        }
-                    )
-                }
-                item {
-                    SettingItem(
-                        icon = Icons.Default.Info,
-                        title = stringResource(id = R.string.about),
-                        subtitle = "关于 MDMobile",
-                        onClick = {
-                            // 导航到关于页面
-                        }
+                    Slider(
+                        value = userPreferences.fontSize.toFloat(),
+                        onValueChange = { onUpdateFontSize(it.toInt()) },
+                        valueRange = 12f..24f,
+                        steps = 5,
+                        modifier = Modifier.padding(top = 10.dp)
                     )
                 }
             }
+
+            item {
+                SettingsCard(
+                    icon = Icons.Default.Info,
+                    title = "默认目录",
+                    subtitle = userPreferences.defaultFolder ?: stringResource(R.string.default_folder_not_set)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FileUtils.getDefaultDirectories().forEach { directory ->
+                            FilterChip(
+                                selected = userPreferences.defaultFolder == directory.path,
+                                onClick = { onUpdateDefaultFolder(directory.path) },
+                                label = { Text(directory.name) }
+                            )
+                        }
+                    }
+                    FilterChip(
+                        selected = false,
+                        onClick = { showCustomPathDialog = true },
+                        label = { Text(stringResource(R.string.custom_path)) },
+                        modifier = Modifier.padding(top = 10.dp)
+                    )
+                }
+            }
+
+            item {
+                SettingsCard(
+                    icon = Icons.Default.PrivacyTip,
+                    title = "隐私与说明",
+                    subtitle = "查看应用政策和基本信息"
+                ) {
+                    TextButton(onClick = onPrivacyPolicyClick) {
+                        Text(stringResource(R.string.privacy_policy))
+                    }
+                }
+            }
+
+            item {
+                SettingsCard(
+                    icon = Icons.Default.Info,
+                    title = "关于应用",
+                    subtitle = stringResource(R.string.about_content)
+                ) {}
+            }
         }
+    }
+
+    if (showCustomPathDialog) {
+        AlertDialog(
+            onDismissRequest = { showCustomPathDialog = false },
+            title = { Text(stringResource(R.string.custom_path)) },
+            text = {
+                OutlinedTextField(
+                    value = customPath,
+                    onValueChange = { customPath = it },
+                    label = { Text(stringResource(R.string.default_folder)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (customPath.isBlank() || FileUtils.ensureDirectory(customPath)) {
+                            onUpdateDefaultFolder(customPath.ifBlank { null })
+                            showCustomPathDialog = false
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.apply))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomPathDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 }
 
 @Composable
-private fun SettingCategory(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-    )
-}
-
-@Composable
-private fun SettingItem(
-    icon: ImageVector,
+private fun SettingsCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String,
-    onClick: () -> Unit
+    content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
-        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface
-        ),
+            .padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        ListItem(
-            headlineContent = { Text(text = title) },
-            supportingContent = { Text(text = subtitle) },
-            leadingContent = {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            },
-            trailingContent = {
-                Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        )
+        Column(modifier = Modifier.padding(18.dp)) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 12.dp)
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp, bottom = 8.dp)
+            )
+            content()
+        }
     }
 }

@@ -31,64 +31,46 @@ import kotlinx.coroutines.delay
 @Composable
 fun SplashScreen(
     onSplashComplete: () -> Unit,
-    splashDuration: Long = 2000L // 2 seconds
+    splashDuration: Long = 1200L
 ) {
-    // 渐变透明度动画
     val alpha = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
-        // 淡入动画
         alpha.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 800, easing = EaseOutCubic)
+            animationSpec = tween(durationMillis = 500, easing = EaseOutCubic)
         )
-
-        // 显示一段时间
         delay(splashDuration)
-
-        // 淡出动画
         alpha.animateTo(
             targetValue = 0f,
-            animationSpec = tween(durationMillis = 600, easing = EaseOutCubic)
+            animationSpec = tween(durationMillis = 350, easing = EaseOutCubic)
         )
-
-        // 通知完成
         onSplashComplete()
     }
-
-    // 渐变背景
-    val gradientColors = listOf(
-        MaterialTheme.colorScheme.primary,
-        MaterialTheme.colorScheme.primaryContainer,
-        MaterialTheme.colorScheme.tertiary
-    )
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    colors = gradientColors,
-                    startY = 0f,
-                    endY = Float.POSITIVE_INFINITY
+                    listOf(
+                        MaterialTheme.colorScheme.primary,
+                        MaterialTheme.colorScheme.primaryContainer,
+                        MaterialTheme.colorScheme.secondaryContainer
+                    )
                 )
             )
             .alpha(alpha.value),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // 应用图标 - 使用向量图资源，避免 AdaptiveIcon 导致的 Compose 崩溃
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Image(
-                painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                painter = painterResource(id = R.drawable.brand_monkey),
                 contentDescription = stringResource(id = R.string.app_name),
                 modifier = Modifier
                     .size(120.dp)
                     .padding(bottom = 24.dp)
             )
-
-            // 应用名称
             Text(
                 text = stringResource(id = R.string.app_name),
                 style = MaterialTheme.typography.displayLarge.copy(
@@ -99,12 +81,10 @@ fun SplashScreen(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
-
-            // 副标题
             Text(
-                text = "Markdown Reader",
+                text = "鱼尾猩自用markdown阅读与编辑器",
                 style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f),
                 textAlign = TextAlign.Center
             )
         }

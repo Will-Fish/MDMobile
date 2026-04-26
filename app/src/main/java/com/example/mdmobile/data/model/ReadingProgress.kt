@@ -9,12 +9,12 @@ data class ReadingProgress(
     @PrimaryKey
     val filePath: String,
     val fileName: String,
-    val position: Int = 0, // Scroll position or line number
-    val percentage: Float = 0f, // Progress percentage (0-100)
-    val lastPosition: Int = 0, // Last recorded position
-    val totalLines: Int = 0, // Total lines in file (if known)
+    val position: Int = 0,
+    val percentage: Float = 0f,
+    val lastPosition: Int = 0,
+    val totalLines: Int = 0,
     val lastAccessed: Date = Date(),
-    val readDuration: Long = 0, // Total reading time in milliseconds
+    val readDuration: Long = 0,
     val isCompleted: Boolean = false
 ) {
     companion object {

@@ -26,11 +26,15 @@ class BookmarkViewModel(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private var hasStartedObserving = false
+
     init {
         loadBookmarks()
     }
 
     fun loadBookmarks() {
+        if (hasStartedObserving) return
+        hasStartedObserving = true
         viewModelScope.launch {
             _isLoading.value = true
             bookmarkRepository.getAllBookmarks().collect { bookmarksList ->
@@ -41,35 +45,27 @@ class BookmarkViewModel(
     }
 
     suspend fun addBookmark(bookmark: Bookmark): Long {
-        return bookmarkRepository.addBookmark(bookmark).also {
-            loadBookmarks() // Refresh the list
-        }
+        return bookmarkRepository.addBookmark(bookmark)
     }
 
     suspend fun updateBookmark(bookmark: Bookmark) {
         bookmarkRepository.updateBookmark(bookmark)
-        loadBookmarks()
     }
 
     suspend fun deleteBookmark(bookmark: Bookmark) {
         bookmarkRepository.deleteBookmark(bookmark)
-        loadBookmarks()
     }
 
     suspend fun deleteBookmarkById(id: Long) {
         bookmarkRepository.deleteBookmarkById(id)
-        loadBookmarks()
     }
 
     suspend fun toggleBookmark(filePath: String, fileName: String): Boolean {
-        return bookmarkRepository.toggleBookmark(filePath, fileName).also {
-            loadBookmarks()
-        }
+        return bookmarkRepository.toggleBookmark(filePath, fileName)
     }
 
     suspend fun updateLastAccessed(bookmark: Bookmark) {
         bookmarkRepository.updateLastAccessed(bookmark.id)
-        loadBookmarks()
     }
 
     companion object {

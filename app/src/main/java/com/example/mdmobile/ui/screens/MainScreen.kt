@@ -1,5 +1,6 @@
 package com.example.mdmobile.ui.screens
 
+import android.os.Environment
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -7,24 +8,41 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.example.mdmobile.data.model.MarkdownFile
+import com.example.mdmobile.data.model.ThemeMode
+import com.example.mdmobile.data.model.UserPreferences
 import com.example.mdmobile.ui.components.BottomNavItem
 import com.example.mdmobile.ui.components.MDMobileBottomNavigation
+import java.io.File
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun MainScreen(
+    userPreferences: UserPreferences,
+    onUpdateThemeMode: (ThemeMode) -> Unit,
+    onUpdateFontSize: (Int) -> Unit,
+    onUpdateDefaultFolder: (String?) -> Unit,
     navController: NavHostController = rememberNavController()
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val selectedRoute = when {
+        currentRoute == "files/{path}" -> BottomNavItem.FILES.route
+        else -> currentRoute
+    }
 
-    // Bottom navigation routes
-    val bottomNavRoutes = listOf(
+    val bottomNavRoutes = setOf(
         BottomNavItem.HOME.route,
         BottomNavItem.FILES.route,
         BottomNavItem.BOOKMARKS.route,
@@ -32,24 +50,18 @@ fun MainScreen(
         BottomNavItem.SETTINGS.route
     )
 
-    // Check if current route is a bottom nav item
-    val isBottomNavVisible = currentRoute in bottomNavRoutes
-
     Scaffold(
         bottomBar = {
-            if (isBottomNavVisible) {
+            if (currentRoute in bottomNavRoutes || currentRoute == "files/{path}") {
                 MDMobileBottomNavigation(
-                    currentRoute = currentRoute,
+                    currentRoute = selectedRoute,
                     onItemClick = { item ->
-                        if (item.route != currentRoute) {
-                            navController.navigate(item.route) {
-                                // Clear back stack to avoid deep navigation chains
-                                popUpTo(navController.graph.startDestinationId) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
+                        navController.navigate(item.route) {
+                            popUpTo(navController.graph.startDestinationId) {
+                                saveState = true
                             }
+                            launchSingleTop = true
+                            restoreState = true
                         }
                     }
                 )
@@ -61,131 +73,190 @@ fun MainScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            MainNavHost(navController = navController)
+            MainNavHost(
+                navController = navController,
+                userPreferences = userPreferences,
+                onUpdateThemeMode = onUpdateThemeMode,
+                onUpdateFontSize = onUpdateFontSize,
+                onUpdateDefaultFolder = onUpdateDefaultFolder
+            )
         }
     }
 }
 
 @Composable
-fun MainNavHost(
-    navController: NavHostController
+private fun MainNavHost(
+    navController: NavHostController,
+    userPreferences: UserPreferences,
+    onUpdateThemeMode: (ThemeMode) -> Unit,
+    onUpdateFontSize: (Int) -> Unit,
+    onUpdateDefaultFolder: (String?) -> Unit
 ) {
     NavHost(
         navController = navController,
         startDestination = BottomNavItem.HOME.route
     ) {
-        // Home screen with quick access
         composable(BottomNavItem.HOME.route) {
             HomeScreen(
-                onFileClick = { file ->
-                    if (file.isDirectory) {
-                        navController.navigate("files/${java.net.URLEncoder.encode(file.path, "UTF-8")}")
+                userPreferences = userPreferences,
+                onFileClick = { file -> openMarkdownTarget(navController, file) },
+                onBookmarksClick = { navController.navigate(BottomNavItem.BOOKMARKS.route) },
+                onRecentFilesClick = { navController.navigate(BottomNavItem.RECENT.route) },
+                onBrowseFilesClick = {
+                    val target = userPreferences.defaultFolder
+                    if (target.isNullOrBlank()) {
+                        navController.navigate(BottomNavItem.FILES.route)
                     } else {
-                        navController.navigate("reader/${java.net.URLEncoder.encode(file.path, "UTF-8")}")
+                        navController.navigate(fileRoute(target))
                     }
                 },
-                onBookmarksClick = {
-                    navController.navigate(BottomNavItem.BOOKMARKS.route)
-                },
-                onRecentFilesClick = {
-                    navController.navigate(BottomNavItem.RECENT.route)
-                },
-                onBrowseFilesClick = {
-                    navController.navigate(BottomNavItem.FILES.route)
+                onQuickNoteClick = {
+                    navController.navigate(
+                        readerRoute(
+                            path = buildDraftPath(userPreferences.defaultFolder),
+                            startInEditMode = true,
+                            isNewFile = true
+                        )
+                    )
                 }
             )
         }
 
-        // Files browser root
         composable(BottomNavItem.FILES.route) {
             FileBrowserScreen(
-                onFileClick = { file ->
-                    if (file.isDirectory) {
-                        navController.navigate("files/${java.net.URLEncoder.encode(file.path, "UTF-8")}")
-                    } else {
-                        navController.navigate("reader/${java.net.URLEncoder.encode(file.path, "UTF-8")}")
+                currentPath = userPreferences.defaultFolder,
+                defaultFolder = userPreferences.defaultFolder,
+                onFileClick = { file -> openMarkdownTarget(navController, file) },
+                onNavigateUp = {
+                    navController.navigate(BottomNavItem.HOME.route) {
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
                     }
                 },
-                onBookmarksClick = {
-                    navController.navigate(BottomNavItem.BOOKMARKS.route)
-                },
-                onRecentFilesClick = {
-                    navController.navigate(BottomNavItem.RECENT.route)
+                onBookmarksClick = { navController.navigate(BottomNavItem.BOOKMARKS.route) },
+                onRecentFilesClick = { navController.navigate(BottomNavItem.RECENT.route) },
+                onCreateFile = { filePath ->
+                    navController.navigate(
+                        readerRoute(
+                            path = filePath,
+                            startInEditMode = true,
+                            isNewFile = true
+                        )
+                    )
                 }
             )
         }
 
-        // Nested files navigation
         composable(
-            "files/{path}",
-            arguments = listOf(androidx.navigation.navArgument("path") { type = androidx.navigation.NavType.StringType })
+            route = "files/{path}",
+            arguments = listOf(navArgument("path") { type = NavType.StringType })
         ) { backStackEntry ->
-            val path = backStackEntry.arguments?.getString("path")?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+            val path = backStackEntry.arguments?.getString("path")?.decode()
             FileBrowserScreen(
                 currentPath = path,
-                onFileClick = { file ->
-                    if (file.isDirectory) {
-                        navController.navigate("files/${java.net.URLEncoder.encode(file.path, "UTF-8")}")
-                    } else {
-                        navController.navigate("reader/${java.net.URLEncoder.encode(file.path, "UTF-8")}")
-                    }
-                },
-                onNavigateUp = {
-                    navController.navigateUp()
-                },
-                onBookmarksClick = {
-                    navController.navigate(BottomNavItem.BOOKMARKS.route)
-                },
-                onRecentFilesClick = {
-                    navController.navigate(BottomNavItem.RECENT.route)
+                defaultFolder = userPreferences.defaultFolder,
+                onFileClick = { file -> openMarkdownTarget(navController, file) },
+                onNavigateUp = { navController.navigateUp() },
+                onBookmarksClick = { navController.navigate(BottomNavItem.BOOKMARKS.route) },
+                onRecentFilesClick = { navController.navigate(BottomNavItem.RECENT.route) },
+                onCreateFile = { filePath ->
+                    navController.navigate(
+                        readerRoute(
+                            path = filePath,
+                            startInEditMode = true,
+                            isNewFile = true
+                        )
+                    )
                 }
             )
         }
 
-        // Bookmarks screen
         composable(BottomNavItem.BOOKMARKS.route) {
             BookmarksScreen(
                 onBookmarkClick = { bookmark ->
-                    navController.navigate("reader/${java.net.URLEncoder.encode(bookmark.filePath, "UTF-8")}")
-                },
-                onNavigateBack = {
-                    navController.navigateUp()
+                    navController.navigate(readerRoute(bookmark.filePath))
                 }
             )
         }
 
-        // Recent files screen
         composable(BottomNavItem.RECENT.route) {
             RecentFilesScreen(
                 onFileClick = { progress ->
-                    navController.navigate("reader/${java.net.URLEncoder.encode(progress.filePath, "UTF-8")}")
-                },
-                onNavigateBack = {
-                    navController.navigateUp()
+                    navController.navigate(readerRoute(progress.filePath))
                 }
             )
         }
 
-        // Reader screen
         composable(
-            "reader/{path}",
-            arguments = listOf(androidx.navigation.navArgument("path") { type = androidx.navigation.NavType.StringType })
+            route = "reader/{path}?edit={edit}&new={new}",
+            arguments = listOf(
+                navArgument("path") { type = NavType.StringType },
+                navArgument("edit") {
+                    type = NavType.BoolType
+                    defaultValue = false
+                },
+                navArgument("new") {
+                    type = NavType.BoolType
+                    defaultValue = false
+                }
+            )
         ) { backStackEntry ->
-            val path = backStackEntry.arguments?.getString("path")?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+            val path = backStackEntry.arguments?.getString("path")?.decode()
+            val startInEditMode = backStackEntry.arguments?.getBoolean("edit") == true
+            val isNewFile = backStackEntry.arguments?.getBoolean("new") == true
             ReaderScreen(
                 filePath = path,
-                onBack = { navController.navigateUp() }
+                userPreferences = userPreferences,
+                startInEditMode = startInEditMode,
+                isNewFile = isNewFile,
+                onBack = { navController.navigateUp() },
+                onFontSizeChange = onUpdateFontSize
             )
         }
 
-        // Settings screen
         composable(BottomNavItem.SETTINGS.route) {
-            SettingsScreen(navController = navController)
+            SettingsScreen(
+                userPreferences = userPreferences,
+                onUpdateThemeMode = onUpdateThemeMode,
+                onUpdateFontSize = onUpdateFontSize,
+                onUpdateDefaultFolder = onUpdateDefaultFolder,
+                onPrivacyPolicyClick = { navController.navigate("privacy_policy") }
+            )
         }
 
-        // Privacy policy screen
         composable("privacy_policy") {
             PrivacyPolicyScreen(navController = navController)
         }
     }
 }
+
+private fun openMarkdownTarget(navController: NavHostController, file: MarkdownFile) {
+    if (file.isDirectory) {
+        navController.navigate(fileRoute(file.path))
+    } else {
+        navController.navigate(readerRoute(file.path))
+    }
+}
+
+private fun fileRoute(path: String): String {
+    return "files/${path.encode()}"
+}
+
+private fun readerRoute(path: String, startInEditMode: Boolean = false, isNewFile: Boolean = false): String {
+    return "reader/${path.encode()}?edit=$startInEditMode&new=$isNewFile"
+}
+
+private fun buildDraftPath(preferredDirectory: String?): String {
+    val directory = preferredDirectory
+        ?.takeIf { it.isNotBlank() }
+        ?: Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).absolutePath
+    val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.getDefault()).format(Date())
+    return File(directory, "note-$timestamp.md").absolutePath
+}
+
+private fun String.encode(): String = URLEncoder.encode(this, "UTF-8")
+
+private fun String.decode(): String = URLDecoder.decode(this, "UTF-8")

@@ -1,12 +1,17 @@
 package com.example.mdmobile.ui.components
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
@@ -21,10 +26,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.mdmobile.data.model.Bookmark
-import com.example.mdmobile.utils.scaleOnPress
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -38,61 +41,48 @@ fun BookmarkItem(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .scaleOnPress(scale = 0.98f),
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            .animateContentSize()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onClick() }
                 .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Default.Bookmark,
-                contentDescription = "书签",
-                modifier = Modifier.size(28.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape),
+                contentAlignment = Alignment.Center
             ) {
+                Icon(
+                    imageVector = Icons.Default.Bookmark,
+                    contentDescription = bookmark.fileName,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = bookmark.fileName,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-
-                if (bookmark.note != null && bookmark.note.isNotBlank()) {
-                    Text(
-                        text = bookmark.note,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
                 Text(
-                    text = "上次访问: ${formatDate(bookmark.lastAccessed)}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = bookmark.note?.takeIf { it.isNotBlank() }
+                        ?: "最近访问 ${formatDate(bookmark.lastAccessed)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
                 )
             }
-
-            IconButton(
-                onClick = onDelete,
-                modifier = Modifier.size(32.dp)
-            ) {
+            IconButton(onClick = onDelete) {
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "删除书签",
@@ -104,24 +94,5 @@ fun BookmarkItem(
 }
 
 private fun formatDate(date: java.util.Date): String {
-    val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-    return sdf.format(date)
-}
-
-@Preview(showBackground = true)
-@Composable
-fun BookmarkItemPreview() {
-    MaterialTheme {
-        BookmarkItem(
-            bookmark = Bookmark(
-                id = 1,
-                filePath = "/sdcard/Documents/example.md",
-                fileName = "示例文档.md",
-                note = "重要的参考文档",
-                lastAccessed = java.util.Date()
-            ),
-            onClick = {},
-            onDelete = {}
-        )
-    }
+    return SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(date)
 }
