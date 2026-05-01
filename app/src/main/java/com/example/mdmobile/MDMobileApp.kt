@@ -1,5 +1,6 @@
 package com.example.mdmobile
 
+import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,8 +26,16 @@ import com.example.mdmobile.ui.theme.MDMobileTheme
 import com.example.mdmobile.ui.viewmodels.UserPreferencesViewModel
 import com.example.mdmobile.utils.Permissions
 
+data class ExternalOpenRequest(
+    val id: Long,
+    val uri: Uri
+)
+
 @Composable
-fun MDMobileApp() {
+fun MDMobileApp(
+    externalOpenRequest: ExternalOpenRequest? = null,
+    onExternalOpenHandled: (Long) -> Unit = {}
+) {
     val context = LocalContext.current
     val preferencesViewModel: UserPreferencesViewModel = viewModel(
         factory = UserPreferencesViewModel.provideFactory(context)
@@ -36,7 +45,7 @@ fun MDMobileApp() {
     val hasPermission = Permissions.hasStoragePermission(context)
 
     MDMobileTheme(themeMode = userPreferences.themeMode) {
-        if (!hasPermission) {
+        if (!hasPermission && externalOpenRequest == null) {
             PermissionRequestScreen(
                 onPermissionGranted = {}
             )
@@ -45,7 +54,9 @@ fun MDMobileApp() {
                 userPreferences = userPreferences,
                 onUpdateThemeMode = preferencesViewModel::updateThemeMode,
                 onUpdateFontSize = preferencesViewModel::updateFontSize,
-                onUpdateDefaultFolder = preferencesViewModel::updateDefaultFolder
+                onUpdateDefaultFolder = preferencesViewModel::updateDefaultFolder,
+                externalOpenRequest = externalOpenRequest,
+                onExternalOpenHandled = onExternalOpenHandled
             )
         }
     }

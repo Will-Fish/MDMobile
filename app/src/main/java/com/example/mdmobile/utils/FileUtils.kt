@@ -1,10 +1,24 @@
 package com.example.mdmobile.utils
 
+import android.content.Context
+import android.database.Cursor
+import android.net.Uri
 import android.os.Environment
+import android.provider.OpenableColumns
 import android.util.Log
 import com.example.mdmobile.data.model.MarkdownFile
 import java.io.File
 import java.text.DecimalFormat
+
+sealed class FileRenameResult {
+    data class Success(val file: File) : FileRenameResult()
+    data object BlankName : FileRenameResult()
+    data object InvalidName : FileRenameResult()
+    data object SourceMissing : FileRenameResult()
+    data object NotMarkdownFile : FileRenameResult()
+    data object TargetExists : FileRenameResult()
+    data object RenameFailed : FileRenameResult()
+}
 
 object FileUtils {
     fun listFilesInDirectory(path: String?): List<MarkdownFile> {
@@ -93,10 +107,72 @@ object FileUtils {
         }
     }
 
+    fun importMarkdownFromUri(context: Context, uri: Uri): String? {
+        return try {
+            val displayName = getDisplayName(context, uri)
+                ?.takeIf { it.isNotBlank() }
+                ?: uri.lastPathSegment?.substringAfterLast('/')
+                ?: "shared-markdown.md"
+            val safeName = sanitizeFileName(displayName).let { name ->
+                if (name.endsWith(".md", ignoreCase = true) ||
+                    name.endsWith(".markdown", ignoreCase = true)
+                ) {
+                    name
+                } else {
+                    "$name.md"
+                }
+            }
+            val importsDir = File(context.filesDir, "shared_markdown")
+            if (!importsDir.exists()) {
+                importsDir.mkdirs()
+            }
+            val target = File(importsDir, "${System.currentTimeMillis()}-$safeName")
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            } ?: return null
+            target.absolutePath
+        } catch (e: Exception) {
+            Log.e("FileUtils", "Error importing markdown from uri: $uri", e)
+            null
+        }
+    }
+
     fun createMarkdownFile(directoryPath: String, fileName: String, content: String = ""): String? {
         val normalizedName = if (fileName.endsWith(".md", ignoreCase = true)) fileName else "$fileName.md"
         val target = File(directoryPath, normalizedName)
         return if (writeMarkdownFile(target.absolutePath, content)) target.absolutePath else null
+    }
+
+    fun renameMarkdownFile(filePath: String, newName: String): FileRenameResult {
+        val source = File(filePath)
+        if (!source.exists() || !source.isFile) return FileRenameResult.SourceMissing
+        if (!source.extension.equals("md", ignoreCase = true) &&
+            !source.extension.equals("markdown", ignoreCase = true)
+        ) {
+            return FileRenameResult.NotMarkdownFile
+        }
+
+        val trimmedName = newName.trim()
+        if (trimmedName.isBlank()) return FileRenameResult.BlankName
+        if (trimmedName.contains(Regex("[\\\\/:*?\"<>|]"))) return FileRenameResult.InvalidName
+
+        val normalizedName = if (
+            trimmedName.endsWith(".md", ignoreCase = true) ||
+            trimmedName.endsWith(".markdown", ignoreCase = true)
+        ) {
+            trimmedName
+        } else {
+            "$trimmedName.md"
+        }
+        val target = File(source.parentFile ?: return FileRenameResult.RenameFailed, normalizedName)
+        if (source.absolutePath == target.absolutePath) return FileRenameResult.Success(source)
+        if (target.exists()) return FileRenameResult.TargetExists
+
+        return if (source.renameTo(target)) {
+            FileRenameResult.Success(target)
+        } else {
+            FileRenameResult.RenameFailed
+        }
     }
 
     fun getRecommendedRootDirectory(): File {
@@ -119,5 +195,40 @@ object FileUtils {
             size >= kb -> "${formatter.format(size / kb)} KB"
             else -> "$size B"
         }
+    }
+
+    private fun getDisplayName(context: Context, uri: Uri): String? {
+        if (uri.scheme == "file") {
+            return uri.path?.let { File(it).name }
+        }
+
+        var cursor: Cursor? = null
+        return try {
+            cursor = context.contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null
+            )
+            val nameIndex = cursor?.getColumnIndex(OpenableColumns.DISPLAY_NAME) ?: -1
+            if (cursor?.moveToFirst() == true && nameIndex >= 0) {
+                cursor.getString(nameIndex)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.w("FileUtils", "Unable to read display name for uri: $uri", e)
+            null
+        } finally {
+            cursor?.close()
+        }
+    }
+
+    private fun sanitizeFileName(name: String): String {
+        return name
+            .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            .trim()
+            .ifBlank { "shared-markdown.md" }
     }
 }

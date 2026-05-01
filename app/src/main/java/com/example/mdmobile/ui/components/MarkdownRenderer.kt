@@ -56,7 +56,7 @@ fun MarkdownRenderer(
     val isDarkTheme = colors.background.luminance() < 0.5f
     val backgroundColor = if (isDarkTheme) "#0C1624" else "#FFFFFF"
     val htmlContent = remember(markdownContent, fontSize, isDarkTheme) {
-        convertMarkdownToHtml(markdownContent, isDarkTheme, fontSize)
+        renderMarkdownPreviewHtml(markdownContent, isDarkTheme, fontSize)
     }
     val latestAnchor = rememberUpdatedState(scrollToAnchor)
     val latestHeadingCallback = rememberUpdatedState(onCurrentAnchorChange)
@@ -105,20 +105,21 @@ fun MarkdownRenderer(
     }
 }
 
-private fun convertMarkdownToHtml(
+internal fun renderMarkdownPreviewHtml(
     markdown: String,
     isDarkTheme: Boolean,
     fontSize: Int
 ): String {
     val parser = Parser.builder().build()
-    val document = parser.parse(markdown)
-    val renderer = HtmlRenderer.builder().build()
+    val document = parser.parse(preserveEditorBlankLines(markdown))
+    val renderer = HtmlRenderer.builder()
+        .softbreak("<br>\n")
+        .build()
     val rawHtmlBody = renderer.render(document)
     val htmlBody = enhanceRenderedHtml(rawHtmlBody)
 
     val backgroundColor = if (isDarkTheme) "#0C1624" else "#FFFFFF"
     val textColor = if (isDarkTheme) "#E8F1FF" else "#12233B"
-    val mutedText = if (isDarkTheme) "#AFC3E2" else "#5A6F89"
     val codeBackground = if (isDarkTheme) "#101D30" else "#F4F8FD"
     val codeInlineBackground = if (isDarkTheme) "#162741" else "#E6F0FF"
     val codeBorder = if (isDarkTheme) "#26415F" else "#D3E0F0"
@@ -172,7 +173,7 @@ private fun convertMarkdownToHtml(
                     border-bottom: 1px solid $borderColor;
                 }
                 h3 { font-size: 1.28em; }
-                p, ul, ol, table, .code-block, blockquote {
+                p, ul, ol, table, blockquote {
                     margin: 0 0 18px 0;
                     color: $textColor;
                 }
@@ -198,81 +199,25 @@ private fun convertMarkdownToHtml(
                     padding: 0.18em 0.42em;
                     font-size: 0.92em;
                 }
-                .code-block {
+                pre {
                     background: linear-gradient(180deg, $codeBackground, ${if (isDarkTheme) "#0B1522" else "#ECF4FF"});
                     border: 1px solid $codeBorder;
                     border-radius: 18px;
-                    overflow: hidden;
-                    box-shadow: 0 14px 32px rgba(10, 30, 60, 0.12);
-                    color: $textColor;
-                }
-                .code-toolbar {
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    padding: 10px 14px;
-                    border-bottom: 1px solid $codeBorder;
-                    background: rgba(255,255,255,0.03);
-                }
-                .code-language {
-                    font-family: "JetBrains Mono", Consolas, monospace;
-                    font-size: 0.82em;
-                    letter-spacing: 0.05em;
-                    text-transform: uppercase;
-                    color: $mutedText;
-                }
-                .copy-button {
-                    border: 0;
-                    border-radius: 10px;
-                    background: $accentSoft;
-                    color: $accent;
-                    font-size: 0.82em;
-                    padding: 6px 10px;
-                    cursor: pointer;
-                }
-                .code-scroll {
                     overflow-x: auto;
-                }
-                table.code-table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    table-layout: fixed;
-                }
-                .code-table tr:nth-child(even) {
-                    background-color: transparent;
-                }
-                .code-table td {
-                    border: none;
-                    padding: 0;
-                    vertical-align: top;
-                }
-                .code-line-number {
-                    width: 48px;
-                    min-width: 48px;
-                    padding: 0 10px 0 14px;
-                    text-align: right;
-                    color: $mutedText;
-                    user-select: none;
-                    border-right: 1px solid $codeBorder;
-                }
-                .code-line-content {
-                    padding: 0 16px;
-                    white-space: pre;
-                    color: $textColor;
-                }
-                .code-line {
-                    height: 1.75em;
+                    box-shadow: 0 14px 32px rgba(10, 30, 60, 0.12);
+                    padding: 16px;
                     line-height: 1.75;
+                    white-space: pre;
                 }
-                .code-shell { color: #7CC8FF; }
-                .code-keyword { color: #C678DD; font-weight: 600; }
-                .code-string { color: #98C379; }
-                .code-number { color: #E5C07B; }
-                .code-comment { color: $mutedText; font-style: italic; }
-                .code-type { color: #61AFEF; }
-                .code-func { color: #56B6C2; }
-                .code-operator { color: #D19A66; }
-                .code-annotation { color: #E06C75; }
+                pre code {
+                    display: block;
+                    background: transparent;
+                    color: $textColor;
+                    border-radius: 0;
+                    padding: 0;
+                    font-size: 0.92em;
+                    white-space: pre;
+                }
                 ul, ol {
                     padding-left: 1.45em;
                 }
@@ -361,6 +306,40 @@ private fun convertMarkdownToHtml(
     """.trimIndent()
 }
 
+private fun preserveEditorBlankLines(markdown: String): String {
+    val normalized = markdown.replace("\r\n", "\n").replace('\r', '\n')
+    val lines = normalized.split("\n")
+    var inFence = false
+    var fenceMarker = ""
+
+    return buildString {
+        lines.forEachIndexed { index, line ->
+            val trimmed = line.trimStart()
+            val fenceMatch = Regex("^(`{3,}|~{3,})").find(trimmed)
+            if (fenceMatch != null) {
+                val marker = fenceMatch.value
+                if (!inFence) {
+                    inFence = true
+                    fenceMarker = marker.take(3)
+                } else if (marker.startsWith(fenceMarker)) {
+                    inFence = false
+                    fenceMarker = ""
+                }
+            }
+
+            if (!inFence && line.isBlank()) {
+                append("<br>")
+            } else {
+                append(line)
+            }
+
+            if (index < lines.lastIndex) {
+                append('\n')
+            }
+        }
+    }
+}
+
 private fun enhanceRenderedHtml(html: String): String {
     val headingRegex = Regex("<h([1-6])>(.*?)</h\\1>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
     var headingIndex = 0
@@ -372,139 +351,7 @@ private fun enhanceRenderedHtml(html: String): String {
         "<h$level id=\"$id\">$inner</h$level>"
     }
 
-    val codeRegex = Regex(
-        "<pre><code(?: class=\"language-([^\"]+)\")?>(.*?)</code></pre>",
-        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
-    )
-    return codeRegex.replace(withAnchors) { match ->
-        val language = match.groupValues[1].ifBlank { "plain" }
-        val rawCode = match.groupValues[2]
-        val highlighted = highlightCode(rawCode, language)
-        val lined = addLineNumbers(highlighted)
-        val escapedRaw = rawCode
-            .replace("&quot;", "\"")
-            .replace("&#39;", "'")
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
-            .replace("&amp;", "&")
-            .replace("\n", "&#10;")
-            .replace("\"", "&quot;")
-        """
-            <div class="code-block">
-                <div class="code-toolbar">
-                    <span class="code-language">${displayLanguage(language)}</span>
-                    <button class="copy-button" data-raw-code="$escapedRaw" onclick="copyCode(this)">复制代码</button>
-                </div>
-                <div class="code-scroll">
-                    <table class="code-table"><tbody>$lined</tbody></table>
-                </div>
-            </div>
-        """.trimIndent()
-    }
-}
-
-private fun addLineNumbers(codeHtml: String): String {
-    val lines = codeHtml.split("\n")
-    return lines.mapIndexed { index, line ->
-        """
-            <tr class="code-line">
-                <td class="code-line-number">${index + 1}</td>
-                <td class="code-line-content">${if (line.isEmpty()) "&nbsp;" else line}</td>
-            </tr>
-        """.trimIndent()
-    }.joinToString("")
-}
-
-private fun highlightCode(encodedCode: String, language: String): String {
-    var code = encodedCode
-    val normalized = language.lowercase()
-    val commentPatterns = when (normalized) {
-        "kotlin", "java", "javascript", "typescript", "js", "ts", "c", "cpp", "csharp", "swift", "go", "rust", "php" ->
-            listOf("//.*?(?=<br>|\\n|$)")
-        "python", "bash", "shell", "sh", "yaml", "toml", "ruby", "dockerfile" ->
-            listOf("#.*?(?=<br>|\\n|$)")
-        "sql", "lua", "haskell" ->
-            listOf("--.*?(?=<br>|\\n|$)")
-        else -> emptyList()
-    }
-
-    commentPatterns.forEach { pattern ->
-        code = code.replace(Regex(pattern)) { "<span class=\"code-comment\">${it.value}</span>" }
-    }
-
-    code = code.replace(
-        Regex("(&quot;.*?&quot;|'.*?'|`.*?`)", RegexOption.DOT_MATCHES_ALL)
-    ) { "<span class=\"code-string\">${it.value}</span>" }
-
-    code = code.replace(Regex("\\b(0x[0-9A-Fa-f]+|\\d+(?:\\.\\d+)?)\\b")) {
-        "<span class=\"code-number\">${it.value}</span>"
-    }
-
-    val keywordSet = when (normalized) {
-        "kotlin" -> listOf("fun", "val", "var", "class", "object", "when", "if", "else", "return", "suspend", "private", "public", "data", "interface", "sealed", "inline", "package", "import")
-        "java" -> listOf("class", "public", "private", "void", "static", "new", "return", "if", "else", "extends", "implements", "package", "import", "final", "try", "catch")
-        "javascript", "typescript", "js", "ts" -> listOf("const", "let", "var", "function", "return", "if", "else", "class", "await", "async", "import", "export", "from", "new", "switch", "case")
-        "python" -> listOf("def", "class", "return", "if", "elif", "else", "import", "from", "for", "while", "async", "await", "with", "as", "pass", "lambda")
-        "bash", "shell", "sh" -> listOf("if", "then", "else", "fi", "for", "do", "done", "echo", "cat", "grep", "export", "function")
-        "go" -> listOf("func", "package", "import", "return", "if", "else", "for", "range", "type", "struct", "interface", "go", "defer")
-        "rust" -> listOf("fn", "let", "mut", "pub", "impl", "trait", "struct", "enum", "match", "if", "else", "return", "use")
-        "swift" -> listOf("func", "let", "var", "class", "struct", "enum", "protocol", "if", "else", "return", "import", "guard")
-        "sql" -> listOf("select", "from", "where", "join", "left", "right", "inner", "outer", "group", "order", "by", "insert", "update", "delete", "into", "values")
-        "yaml", "toml", "json" -> listOf("true", "false", "null")
-        "html", "xml" -> listOf("div", "span", "body", "head", "script", "style", "meta", "link")
-        "css", "scss" -> listOf("display", "position", "color", "background", "border", "padding", "margin", "font-size", "flex", "grid")
-        else -> emptyList()
-    }
-    if (keywordSet.isNotEmpty()) {
-        code = code.replace(Regex("\\b(${keywordSet.joinToString("|")})\\b", RegexOption.IGNORE_CASE)) {
-            "<span class=\"code-keyword\">${it.value}</span>"
-        }
-    }
-
-    val typeSet = when (normalized) {
-        "kotlin", "java" -> listOf("String", "Int", "Long", "Float", "Double", "Boolean", "Unit", "List", "Map", "MutableList", "MutableMap")
-        "typescript", "ts" -> listOf("string", "number", "boolean", "Promise", "Record", "unknown", "never")
-        "go" -> listOf("string", "int", "bool", "error", "byte", "rune")
-        "rust" -> listOf("String", "str", "usize", "Result", "Option", "Vec")
-        else -> emptyList()
-    }
-    if (typeSet.isNotEmpty()) {
-        code = code.replace(Regex("\\b(${typeSet.joinToString("|")})\\b")) {
-            "<span class=\"code-type\">${it.value}</span>"
-        }
-    }
-
-    code = code.replace(Regex("@[A-Za-z_][A-Za-z0-9_]*")) {
-        "<span class=\"code-annotation\">${it.value}</span>"
-    }
-
-    code = code.replace(Regex("\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()")) {
-        "<span class=\"code-func\">${it.value}</span>"
-    }
-
-    code = code.replace(Regex("([=+\\-*/%<>!&|]{1,3})")) {
-        "<span class=\"code-operator\">${it.value}</span>"
-    }
-
-    if (normalized in listOf("bash", "shell", "sh")) {
-        code = code.replace(Regex("(^|<br>)(\\$\\s?.*?)(?=<br>|$)")) {
-            "${it.groupValues[1]}<span class=\"code-shell\">${it.groupValues[2]}</span>"
-        }
-    }
-
-    return code
-}
-
-private fun displayLanguage(language: String): String {
-    return when (language.lowercase()) {
-        "kt" -> "kotlin"
-        "js" -> "javascript"
-        "ts" -> "typescript"
-        "sh" -> "shell"
-        "py" -> "python"
-        "yml" -> "yaml"
-        else -> language
-    }.uppercase()
+    return withAnchors
 }
 
 private fun slugifyHeading(text: String, index: Int): String {

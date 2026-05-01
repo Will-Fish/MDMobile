@@ -38,8 +38,13 @@
     <string name="preview">预览</string>
     <string name="new_note">新建笔记</string>
     <string name="create_file">创建文件</string>
+    <string name="rename_file">重命名</string>
     <string name="file_name">文件名</string>
     <string name="empty_file_name">请输入文件名</string>
+    <string name="invalid_file_name">文件名不能包含 \\ / : * ? &quot; &lt; &gt; |</string>
+    <string name="file_already_exists">同名文件已存在</string>
+    <string name="rename_markdown_only">只能重命名 Markdown 文件</string>
+    <string name="rename_failed">重命名失败</string>
     <string name="save_success">已保存</string>
     <string name="save_failed">保存失败</string>
     <string name="load_failed">无法加载文档</string>

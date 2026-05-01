@@ -1,19 +1,28 @@
 package com.example.mdmobile
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.example.mdmobile.ui.theme.MDMobileTheme
 import com.example.mdmobile.utils.ScreenOptimization
 import com.example.mdmobile.utils.safeAreaPadding
 
 class MainActivity : ComponentActivity() {
+    private var externalOpenRequest by mutableStateOf<ExternalOpenRequest?>(null)
+    private var externalOpenSequence = 0L
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleExternalOpenIntent(intent)
 
         // 应用屏幕优化
         applyScreenOptimizations()
@@ -27,7 +36,14 @@ class MainActivity : ComponentActivity() {
                         .safeAreaPadding(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    MDMobileApp()
+                    MDMobileApp(
+                        externalOpenRequest = externalOpenRequest,
+                        onExternalOpenHandled = { handledId ->
+                            if (externalOpenRequest?.id == handledId) {
+                                externalOpenRequest = null
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -67,6 +83,12 @@ class MainActivity : ComponentActivity() {
         ScreenOptimization.adaptEdgeToEdge(window, this)
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleExternalOpenIntent(intent)
+    }
+
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean) {
         super.onMultiWindowModeChanged(isInMultiWindowMode)
         // 分屏模式变化时重新优化
@@ -75,5 +97,14 @@ class MainActivity : ComponentActivity() {
         } else {
             ScreenOptimization.optimizeForFullScreen(this)
         }
+    }
+
+    private fun handleExternalOpenIntent(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_VIEW) return
+        val uri: Uri = intent.data ?: return
+        externalOpenRequest = ExternalOpenRequest(
+            id = ++externalOpenSequence,
+            uri = uri
+        )
     }
 }

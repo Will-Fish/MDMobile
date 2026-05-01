@@ -1,13 +1,16 @@
 package com.example.mdmobile.ui.screens
 
 import android.os.Environment
+import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -15,11 +18,15 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.mdmobile.ExternalOpenRequest
 import com.example.mdmobile.data.model.MarkdownFile
 import com.example.mdmobile.data.model.ThemeMode
 import com.example.mdmobile.data.model.UserPreferences
 import com.example.mdmobile.ui.components.BottomNavItem
 import com.example.mdmobile.ui.components.MDMobileBottomNavigation
+import com.example.mdmobile.utils.FileUtils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -33,8 +40,11 @@ fun MainScreen(
     onUpdateThemeMode: (ThemeMode) -> Unit,
     onUpdateFontSize: (Int) -> Unit,
     onUpdateDefaultFolder: (String?) -> Unit,
+    externalOpenRequest: ExternalOpenRequest? = null,
+    onExternalOpenHandled: (Long) -> Unit = {},
     navController: NavHostController = rememberNavController()
 ) {
+    val context = LocalContext.current
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val selectedRoute = when {
@@ -49,6 +59,21 @@ fun MainScreen(
         BottomNavItem.RECENT.route,
         BottomNavItem.SETTINGS.route
     )
+
+    LaunchedEffect(externalOpenRequest?.id) {
+        val request = externalOpenRequest ?: return@LaunchedEffect
+        val importedPath = withContext(Dispatchers.IO) {
+            FileUtils.importMarkdownFromUri(context, request.uri)
+        }
+        if (importedPath == null) {
+            Toast.makeText(context, "无法打开该 Markdown 文件", Toast.LENGTH_SHORT).show()
+        } else {
+            navController.navigate(readerRoute(importedPath)) {
+                launchSingleTop = true
+            }
+        }
+        onExternalOpenHandled(request.id)
+    }
 
     Scaffold(
         bottomBar = {

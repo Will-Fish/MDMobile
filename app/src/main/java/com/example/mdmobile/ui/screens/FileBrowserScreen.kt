@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import com.example.mdmobile.R
 import com.example.mdmobile.data.model.MarkdownFile
 import com.example.mdmobile.ui.components.FileItem
+import com.example.mdmobile.utils.FileRenameResult
 import com.example.mdmobile.utils.FileUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -74,11 +75,21 @@ fun FileBrowserScreen(
     var sortOption by remember { mutableStateOf(SortOption.NAME_ASC) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var draftFileName by remember { mutableStateOf("") }
+    var refreshToken by remember { mutableStateOf(0) }
+    var renameTarget by remember { mutableStateOf<MarkdownFile?>(null) }
+    var renameDraftName by remember { mutableStateOf("") }
+    var renameError by remember { mutableStateOf<String?>(null) }
 
     val isPreviewMode = LocalInspectionMode.current
     val resolvedPath = currentPath ?: defaultFolder
+    val emptyFileNameMessage = stringResource(R.string.empty_file_name)
+    val invalidFileNameMessage = stringResource(R.string.invalid_file_name)
+    val fileNotFoundMessage = stringResource(R.string.file_not_found)
+    val renameMarkdownOnlyMessage = stringResource(R.string.rename_markdown_only)
+    val fileAlreadyExistsMessage = stringResource(R.string.file_already_exists)
+    val renameFailedMessage = stringResource(R.string.rename_failed)
 
-    LaunchedEffect(resolvedPath) {
+    LaunchedEffect(resolvedPath, refreshToken) {
         isLoading = true
         files = if (isPreviewMode) {
             listOf(
@@ -236,7 +247,19 @@ fun FileBrowserScreen(
                     else -> {
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             items(visibleFiles, key = { it.path }) { file ->
-                                FileItem(file = file, onClick = { onFileClick(file) })
+                                FileItem(
+                                    file = file,
+                                    onClick = { onFileClick(file) },
+                                    onRenameClick = if (file.isMarkdownFile) {
+                                        {
+                                            renameTarget = file
+                                            renameDraftName = file.name
+                                            renameError = null
+                                        }
+                                    } else {
+                                        null
+                                    }
+                                )
                             }
                         }
                     }
@@ -244,6 +267,85 @@ fun FileBrowserScreen(
             }
         }
     }
+
+    RenameFileDialog(
+        file = renameTarget,
+        draftName = renameDraftName,
+        error = renameError,
+        onDraftNameChange = {
+            renameDraftName = it
+            renameError = null
+        },
+        onDismiss = {
+            renameTarget = null
+            renameDraftName = ""
+            renameError = null
+        },
+        onConfirm = { file ->
+            when (FileUtils.renameMarkdownFile(file.path, renameDraftName)) {
+                is FileRenameResult.Success -> {
+                    renameTarget = null
+                    renameDraftName = ""
+                    renameError = null
+                    refreshToken += 1
+                }
+
+                FileRenameResult.BlankName -> renameError = emptyFileNameMessage
+                FileRenameResult.InvalidName -> renameError = invalidFileNameMessage
+                FileRenameResult.SourceMissing -> renameError = fileNotFoundMessage
+                FileRenameResult.NotMarkdownFile -> renameError = renameMarkdownOnlyMessage
+                FileRenameResult.TargetExists -> renameError = fileAlreadyExistsMessage
+                FileRenameResult.RenameFailed -> renameError = renameFailedMessage
+            }
+        }
+    )
+}
+
+@Composable
+private fun RenameFileDialog(
+    file: MarkdownFile?,
+    draftName: String,
+    error: String?,
+    onDraftNameChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: (MarkdownFile) -> Unit
+) {
+    if (file == null) return
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.rename_file)) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = draftName,
+                    onValueChange = onDraftNameChange,
+                    label = { Text(stringResource(R.string.file_name)) },
+                    singleLine = true,
+                    isError = error != null,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (error != null) {
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(file) }) {
+                Text(stringResource(R.string.rename_file))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
 }
 
 @Composable
