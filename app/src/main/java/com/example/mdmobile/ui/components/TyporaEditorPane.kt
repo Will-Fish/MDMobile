@@ -92,7 +92,8 @@ fun TyporaEditorPane(
                     headingColor = MaterialTheme.colorScheme.onSurface,
                     accentColor = MaterialTheme.colorScheme.primary,
                     quoteColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    codeColor = MaterialTheme.colorScheme.primary
+                    codeColor = MaterialTheme.colorScheme.primary,
+                    concealedColor = MaterialTheme.colorScheme.surface
                 ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Default)
@@ -110,15 +111,20 @@ private fun markdownEditVisualTransformation(
     headingColor: Color,
     accentColor: Color,
     quoteColor: Color,
-    codeColor: Color
+    codeColor: Color,
+    concealedColor: Color
 ): VisualTransformation {
     val normalStyle = SpanStyle(color = baseTextColor)
     val syntaxStyle = SpanStyle(color = mutedTextColor)
+    val concealedSyntaxStyle = SpanStyle(
+        color = concealedColor.copy(alpha = 0.02f),
+        fontSize = 1.sp
+    )
     val codeStyle = SpanStyle(
         color = codeColor,
         fontFamily = FontFamily.Monospace
     )
-    return remember(cursorPosition, fontSize, baseTextColor, mutedTextColor, headingColor, accentColor, quoteColor, codeColor) {
+    return remember(cursorPosition, fontSize, baseTextColor, mutedTextColor, headingColor, accentColor, quoteColor, codeColor, concealedColor) {
         VisualTransformation { text ->
             val plan = buildMarkdownEditStylePlan(text.text, cursorPosition)
             val transformed = buildAnnotatedString {
@@ -130,20 +136,12 @@ private fun markdownEditVisualTransformation(
                     addStyle(styleForRange(range.kind, fontSize, syntaxStyle, headingColor, accentColor, quoteColor, codeStyle), range.start, range.end)
                 }
                 plan.ranges
-                    .filter { it.kind.isMarkdownMarker() }
-                    .filterNot { it.start >= plan.activeLine.start && it.end <= plan.activeLine.end }
-                    .forEach { addStyle(syntaxStyle.copy(color = mutedTextColor.copy(alpha = 0.24f)), it.start, it.end) }
+                    .filter { it.shouldConcealInTyporaView(plan.activeLine) }
+                    .forEach { addStyle(concealedSyntaxStyle, it.start, it.end) }
             }
             TransformedText(transformed, OffsetMapping.Identity)
         }
     }
-}
-
-private fun MarkdownEditStyleKind.isMarkdownMarker(): Boolean {
-    return this == MarkdownEditStyleKind.SyntaxMarker ||
-        this == MarkdownEditStyleKind.ListMarker ||
-        this == MarkdownEditStyleKind.BlockquoteMarker ||
-        this == MarkdownEditStyleKind.CodeFence
 }
 
 private fun styleForRange(
@@ -164,19 +162,19 @@ private fun styleForRange(
         MarkdownEditStyleKind.Heading1 -> SpanStyle(
             color = headingColor,
             fontWeight = FontWeight.Bold,
-            fontSize = (fontSize * 1.75f).sp
+            fontSize = (fontSize * 1.48f).sp
         )
 
         MarkdownEditStyleKind.Heading2 -> SpanStyle(
             color = headingColor,
             fontWeight = FontWeight.Bold,
-            fontSize = (fontSize * 1.45f).sp
+            fontSize = (fontSize * 1.3f).sp
         )
 
         MarkdownEditStyleKind.Heading3 -> SpanStyle(
             color = headingColor,
             fontWeight = FontWeight.SemiBold,
-            fontSize = (fontSize * 1.25f).sp
+            fontSize = (fontSize * 1.16f).sp
         )
 
         MarkdownEditStyleKind.Heading4,
@@ -184,7 +182,7 @@ private fun styleForRange(
         MarkdownEditStyleKind.Heading6 -> SpanStyle(
             color = headingColor,
             fontWeight = FontWeight.SemiBold,
-            fontSize = (fontSize * 1.08f).sp
+            fontSize = (fontSize * 1.04f).sp
         )
 
         MarkdownEditStyleKind.BlockquoteText -> SpanStyle(color = quoteColor)

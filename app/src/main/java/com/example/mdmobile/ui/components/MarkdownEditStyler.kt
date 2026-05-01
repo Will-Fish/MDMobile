@@ -40,6 +40,13 @@ data class MarkdownEditStylePlan(
     val ranges: List<MarkdownEditStyleRange>
 )
 
+fun MarkdownEditStyleRange.shouldConcealInTyporaView(
+    activeLine: MarkdownEditLineRange
+): Boolean {
+    val onActiveLine = start >= activeLine.start && end <= activeLine.end
+    return !onActiveLine && kind.isSourceSyntax()
+}
+
 fun buildMarkdownEditStylePlan(
     markdown: String,
     cursorPosition: Int
@@ -184,6 +191,30 @@ private fun headingKind(level: Int): MarkdownEditStyleKind {
         4 -> MarkdownEditStyleKind.Heading4
         5 -> MarkdownEditStyleKind.Heading5
         else -> MarkdownEditStyleKind.Heading6
+    }
+}
+
+private fun MarkdownEditStyleKind.isSourceSyntax(): Boolean {
+    return when (this) {
+        MarkdownEditStyleKind.SyntaxMarker,
+        MarkdownEditStyleKind.ListMarker,
+        MarkdownEditStyleKind.BlockquoteMarker,
+        MarkdownEditStyleKind.CodeFence,
+        MarkdownEditStyleKind.LinkDestination -> true
+
+        MarkdownEditStyleKind.Heading1,
+        MarkdownEditStyleKind.Heading2,
+        MarkdownEditStyleKind.Heading3,
+        MarkdownEditStyleKind.Heading4,
+        MarkdownEditStyleKind.Heading5,
+        MarkdownEditStyleKind.Heading6,
+        MarkdownEditStyleKind.BlockquoteText,
+        MarkdownEditStyleKind.CodeBlock,
+        MarkdownEditStyleKind.BoldText,
+        MarkdownEditStyleKind.ItalicText,
+        MarkdownEditStyleKind.InlineCode,
+        MarkdownEditStyleKind.LinkText,
+        MarkdownEditStyleKind.ImageAltText -> false
     }
 }
 

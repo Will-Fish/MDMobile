@@ -1,6 +1,7 @@
 package com.example.mdmobile
 
 import com.example.mdmobile.ui.components.MarkdownEditStyleKind
+import com.example.mdmobile.ui.components.shouldConcealInTyporaView
 import com.example.mdmobile.ui.components.buildMarkdownEditStylePlan
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -70,6 +71,23 @@ class MarkdownEditStylerTest {
 
         assertEquals(markdown.length, plan.sourceLength)
         assertFalse(plan.ranges.any { it.end > markdown.length || it.start < 0 || it.start > it.end })
+    }
+
+    @Test
+    fun inactiveSourceSyntaxIsConcealedButActiveLineSyntaxStaysVisible() {
+        val markdown = "# 标题\n\n[链接](https://example.com)"
+        val cursor = markdown.indexOf("链接")
+        val plan = buildMarkdownEditStylePlan(markdown, cursor)
+
+        val inactiveHeadingMarker = plan.ranges.single {
+            it.kind == MarkdownEditStyleKind.SyntaxMarker && it.start == 0 && it.end == 2
+        }
+        val activeLinkDestination = plan.ranges.single {
+            it.kind == MarkdownEditStyleKind.LinkDestination
+        }
+
+        assertTrue(inactiveHeadingMarker.shouldConcealInTyporaView(plan.activeLine))
+        assertFalse(activeLinkDestination.shouldConcealInTyporaView(plan.activeLine))
     }
 
     private fun com.example.mdmobile.ui.components.MarkdownEditStylePlan.hasRange(
