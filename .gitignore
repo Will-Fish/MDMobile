@@ -84,6 +84,7 @@ compose-previews/
 
 # Superpowers brainstorming mockups and local state
 .superpowers/
+.worktrees/
 
 SETUP_GRADLE.md
 TEST_NEW_FEATURES.md
