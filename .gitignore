@@ -82,5 +82,8 @@ kotlin-build/
 # Exclude Compose Preview generated files
 compose-previews/
 
+# Superpowers brainstorming mockups and local state
+.superpowers/
+
 SETUP_GRADLE.md
 TEST_NEW_FEATURES.md
