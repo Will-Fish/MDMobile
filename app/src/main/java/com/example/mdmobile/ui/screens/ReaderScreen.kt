@@ -30,8 +30,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -88,15 +86,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -106,6 +101,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mdmobile.R
 import com.example.mdmobile.data.model.UserPreferences
 import com.example.mdmobile.ui.components.MarkdownRenderer
+import com.example.mdmobile.ui.components.TyporaEditorPane
 import com.example.mdmobile.utils.FileUtils
 import com.example.mdmobile.viewmodels.BookmarkViewModel
 import com.example.mdmobile.viewmodels.ReadingProgressViewModel
@@ -657,7 +653,7 @@ fun ReaderScreen(
                                     modifier = Modifier.fillMaxSize(),
                                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                                 ) {
-                                    EditorPane(
+                                    TyporaEditorPane(
                                         value = editorValue,
                                         onValueChange = { updateEditorValue(it) },
                                         onFocusLost = {
@@ -693,7 +689,7 @@ fun ReaderScreen(
                             }
 
                             else -> {
-                                EditorPane(
+                                TyporaEditorPane(
                                     value = editorValue,
                                     onValueChange = { updateEditorValue(it) },
                                     onFocusLost = {
@@ -953,62 +949,6 @@ private fun EditorToolbar(
                     )
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun EditorPane(
-    value: TextFieldValue,
-    onValueChange: (TextFieldValue) -> Unit,
-    onFocusLost: () -> Unit,
-    fontSize: Int,
-    modifier: Modifier = Modifier
-) {
-    var wasFocused by remember { mutableStateOf(false) }
-    val scrollState = rememberScrollState()
-
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 22.dp, vertical = 20.dp)
-        ) {
-            if (value.text.isBlank()) {
-                Text(
-                    text = "从这里开始写作，工具栏会帮你快速插入标题、列表、代码块和图片。",
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontSize = fontSize.sp,
-                        lineHeight = (fontSize * 1.75f).sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
-                )
-            }
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .onFocusChanged { focusState ->
-                        if (wasFocused && !focusState.isFocused) {
-                            onFocusLost()
-                        }
-                        wasFocused = focusState.isFocused
-                    },
-                textStyle = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = fontSize.sp,
-                    lineHeight = (fontSize * 1.75f).sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                ),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Default)
-            )
         }
     }
 }
