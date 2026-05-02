@@ -21,6 +21,8 @@ sealed class FileRenameResult {
 }
 
 object FileUtils {
+    private const val APP_DOCUMENT_FOLDER = "md_files"
+
     fun listFilesInDirectory(path: String?): List<MarkdownFile> {
         return try {
             val directory = when {
@@ -51,6 +53,10 @@ object FileUtils {
 
     fun filterMarkdownFiles(files: List<MarkdownFile>): List<MarkdownFile> {
         return files.filter { it.isMarkdownFile || it.isDirectory }
+    }
+
+    fun filterDocumentFiles(files: List<MarkdownFile>): List<MarkdownFile> {
+        return files.filter { it.isSupportedDocumentFile }
     }
 
     fun sortFilesByName(files: List<MarkdownFile>, ascending: Boolean = true): List<MarkdownFile> {
@@ -175,9 +181,28 @@ object FileUtils {
         }
     }
 
+    fun deleteDocumentFile(filePath: String): Boolean {
+        val source = File(filePath)
+        if (!source.exists() || !source.isFile) return false
+        val isSupportedDocument = source.extension.equals("md", ignoreCase = true) ||
+            source.extension.equals("html", ignoreCase = true) ||
+            source.extension.equals("pdf", ignoreCase = true)
+        return isSupportedDocument && source.delete()
+    }
+
     fun getRecommendedRootDirectory(): File {
         val documents = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
         return if (documents.exists()) documents else Environment.getExternalStorageDirectory()
+    }
+
+    fun getAppDocumentDirectory(context: Context): File {
+        return getAppDocumentDirectory(context.filesDir)
+    }
+
+    fun getAppDocumentDirectory(baseDir: File): File {
+        val directory = File(baseDir, APP_DOCUMENT_FOLDER)
+        ensureDirectory(directory.absolutePath)
+        return directory
     }
 
     fun ensureDirectory(path: String): Boolean {

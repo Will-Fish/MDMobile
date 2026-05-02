@@ -31,6 +31,19 @@ data class MarkdownFile(
         get() = !isDirectory && (extension.equals("md", ignoreCase = true)
                 || extension.equals("markdown", ignoreCase = true))
 
+    val isHtmlFile: Boolean
+        get() = !isDirectory && extension.equals("html", ignoreCase = true)
+
+    val isPdfFile: Boolean
+        get() = !isDirectory && extension.equals("pdf", ignoreCase = true)
+
+    val isSupportedDocumentFile: Boolean
+        get() = !isDirectory && (
+            extension.equals("md", ignoreCase = true) ||
+                extension.equals("html", ignoreCase = true) ||
+                extension.equals("pdf", ignoreCase = true)
+            )
+
     val displayName: String
         get() = if (isDirectory) name else name.removeSuffix(".$extension")
 }

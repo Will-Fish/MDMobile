@@ -1,12 +1,17 @@
 package com.example.mdmobile.ui.screens
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
-import android.view.View
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
+import android.util.Log
 import android.webkit.MimeTypeMap
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -110,11 +115,28 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.commonmark.node.BlockQuote
+import org.commonmark.node.BulletList
+import org.commonmark.node.Code as MarkdownCode
+import org.commonmark.node.FencedCodeBlock
+import org.commonmark.node.HardLineBreak
+import org.commonmark.node.Heading
+import org.commonmark.node.IndentedCodeBlock
+import org.commonmark.node.ListItem
+import org.commonmark.node.Node
+import org.commonmark.node.OrderedList
+import org.commonmark.node.Paragraph
+import org.commonmark.node.SoftLineBreak
+import org.commonmark.node.Text as MarkdownText
+import org.commonmark.node.ThematicBreak
 import org.commonmark.parser.Parser
 import org.commonmark.renderer.html.HtmlRenderer
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
+import android.graphics.Color as AndroidColor
+
+private const val PDF_EXPORT_TAG = "ReaderPdfExport"
 
 private data class MarkdownTool(
     val label: String,
@@ -129,6 +151,43 @@ private data class HeadingItem(
     val title: String,
     val anchorId: String,
     val lineIndex: Int
+)
+
+internal enum class PdfBlockKind {
+    HEADING,
+    PARAGRAPH,
+    QUOTE,
+    CODE,
+    LIST_ITEM,
+    RULE
+}
+
+internal data class MarkdownPdfBlock(
+    val text: String,
+    val kind: PdfBlockKind,
+    val level: Int = 0
+)
+
+private data class PdfBlockStyle(
+    val textSize: Float,
+    val color: Int,
+    val typeface: Typeface,
+    val isBold: Boolean = false,
+    val marginTop: Int = 0,
+    val marginBottom: Int = 20,
+    val insetStart: Int = 0,
+    val insetEnd: Int = 0,
+    val backgroundColor: Int? = null,
+    val accentColor: Int? = null,
+    val extraPadding: Int = 0
+)
+
+private data class PreparedPdfBlock(
+    val block: MarkdownPdfBlock,
+    val layout: StaticLayout?,
+    val style: PdfBlockStyle,
+    val top: Int,
+    val height: Int
 )
 
 private val TextFieldValueSaver = Saver<TextFieldValue, List<Any>>(
@@ -276,22 +335,16 @@ fun ReaderScreen(
         val markdownSnapshot = editorValue.text
         val sourceFile = File(currentPath)
         val targetFile = exportTargetFile(sourceFile, "pdf")
-        val webView = WebView(context)
-        webView.settings.defaultTextEncodingName = "UTF-8"
-        webView.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView, url: String?) {
-                view.post {
-                    val success = writeWebViewPdf(view, targetFile)
-                    Toast.makeText(
-                        context,
-                        if (success) "已导出到 ${targetFile.name}" else "导出失败",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    view.destroy()
-                }
+        scope.launch {
+            val success = withContext(Dispatchers.IO) {
+                writeMarkdownPdf(markdownSnapshot, targetFile)
             }
+            Toast.makeText(
+                context,
+                if (success) "已导出到 ${targetFile.name}" else "导出失败",
+                Toast.LENGTH_SHORT
+            ).show()
         }
-        webView.loadDataWithBaseURL("file:///", renderMarkdownHtml(markdownSnapshot), "text/html", "UTF-8", null)
     }
 
     fun shareMarkdown() {
@@ -1100,33 +1153,54 @@ private fun countWords(text: String): Int {
 }
 
 internal fun exportTargetFile(sourceFile: File, extension: String): File {
-    return File(sourceFile.parentFile, "${sourceFile.nameWithoutExtension}.${extension.trimStart('.')}")
+    return File(sourceFile.parentFile, exportDocumentName(sourceFile, extension))
 }
 
-private fun writeWebViewPdf(
-    webView: WebView,
-    targetFile: File
-): Boolean {
+internal fun exportDocumentName(sourceFile: File, extension: String): String {
+    return "${sourceFile.nameWithoutExtension}.${extension.trimStart('.')}"
+}
+
+internal fun pdfPageCount(contentHeight: Int, pageBodyHeight: Int): Int {
+    val safeBodyHeight = pageBodyHeight.coerceAtLeast(1)
+    val safeContentHeight = contentHeight.coerceAtLeast(1)
+    return ((safeContentHeight + safeBodyHeight - 1) / safeBodyHeight).coerceAtLeast(1)
+}
+
+internal fun pdfTypefaceFamily(kind: PdfBlockKind): String {
+    return when (kind) {
+        PdfBlockKind.HEADING -> "sans-serif-medium"
+        PdfBlockKind.CODE -> "monospace"
+        else -> "sans-serif"
+    }
+}
+
+private fun writeMarkdownPdf(markdown: String, targetFile: File): Boolean {
     return runCatching {
         val pageWidth = 1240
         val pageHeight = 1754
-        val contentHeight = webView.contentHeight.coerceAtLeast(pageHeight)
-
-        webView.measure(
-            View.MeasureSpec.makeMeasureSpec(pageWidth, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(contentHeight, View.MeasureSpec.EXACTLY)
-        )
-        webView.layout(0, 0, pageWidth, contentHeight)
+        val margin = 96
+        val contentWidth = pageWidth - margin * 2
+        val pageBodyHeight = pageHeight - margin * 2
+        val preparedBlocks = preparePdfBlocks(markdownPdfBlocks(markdown), contentWidth)
+        val contentHeight = preparedBlocks.lastOrNull()?.let { it.top + it.height } ?: 1
+        val pageCount = pdfPageCount(contentHeight, pageBodyHeight)
 
         targetFile.parentFile?.mkdirs()
         val document = PdfDocument()
         try {
-            val pageCount = ((contentHeight + pageHeight - 1) / pageHeight).coerceAtLeast(1)
             for (pageIndex in 0 until pageCount) {
                 val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageIndex + 1).create()
                 val page = document.startPage(pageInfo)
-                page.canvas.translate(0f, -(pageIndex * pageHeight).toFloat())
-                webView.draw(page.canvas)
+                drawPdfPageBitmap(
+                    pdfCanvas = page.canvas,
+                    pageWidth = pageWidth,
+                    pageHeight = pageHeight,
+                    margin = margin,
+                    contentWidth = contentWidth,
+                    pageBodyHeight = pageBodyHeight,
+                    pageIndex = pageIndex,
+                    blocks = preparedBlocks
+                )
                 document.finishPage(page)
             }
             targetFile.outputStream().use { output ->
@@ -1135,7 +1209,309 @@ private fun writeWebViewPdf(
         } finally {
             document.close()
         }
-    }.isSuccess
+        targetFile.exists() && targetFile.length() > 0L
+    }.getOrElse { error ->
+        Log.e(PDF_EXPORT_TAG, "PDF export failed: ${targetFile.absolutePath}", error)
+        false
+    }
+}
+
+internal fun markdownPdfBlocks(markdown: String): List<MarkdownPdfBlock> {
+    val document = Parser.builder().build().parse(markdown)
+    val blocks = mutableListOf<MarkdownPdfBlock>()
+    appendMarkdownPdfBlocks(document, blocks)
+    return blocks.ifEmpty {
+        listOf(MarkdownPdfBlock(" ", PdfBlockKind.PARAGRAPH))
+    }
+}
+
+private fun appendMarkdownPdfBlocks(parent: Node, blocks: MutableList<MarkdownPdfBlock>) {
+    var child = parent.firstChild
+    while (child != null) {
+        when (child) {
+            is Heading -> addTextBlock(
+                blocks,
+                collectInlineText(child),
+                PdfBlockKind.HEADING,
+                child.level
+            )
+
+            is Paragraph -> addTextBlock(blocks, collectInlineText(child), PdfBlockKind.PARAGRAPH)
+
+            is FencedCodeBlock -> addCodeBlock(blocks, child.literal)
+
+            is IndentedCodeBlock -> addCodeBlock(blocks, child.literal)
+
+            is BulletList -> appendListBlocks(child, blocks, ordered = false)
+
+            is OrderedList -> appendListBlocks(child, blocks, ordered = true)
+
+            is BlockQuote -> addTextBlock(blocks, collectInlineText(child), PdfBlockKind.QUOTE)
+
+            is ThematicBreak -> blocks += MarkdownPdfBlock("", PdfBlockKind.RULE)
+
+            else -> appendMarkdownPdfBlocks(child, blocks)
+        }
+        child = child.next
+    }
+}
+
+private fun appendListBlocks(list: Node, blocks: MutableList<MarkdownPdfBlock>, ordered: Boolean) {
+    var index = 1
+    var item = list.firstChild
+    while (item != null) {
+        if (item is ListItem) {
+            val prefix = if (ordered) "${index++}." else "•"
+            addTextBlock(blocks, "$prefix ${collectInlineText(item)}", PdfBlockKind.LIST_ITEM)
+        }
+        item = item.next
+    }
+}
+
+private fun addTextBlock(
+    blocks: MutableList<MarkdownPdfBlock>,
+    text: String,
+    kind: PdfBlockKind,
+    level: Int = 0
+) {
+    val normalized = normalizePdfText(text)
+    if (normalized.isNotBlank()) {
+        blocks += MarkdownPdfBlock(normalized, kind, level)
+    }
+}
+
+private fun addCodeBlock(blocks: MutableList<MarkdownPdfBlock>, text: String) {
+    val normalized = text.trimEnd()
+    if (normalized.isNotBlank()) {
+        blocks += MarkdownPdfBlock(normalized, PdfBlockKind.CODE)
+    }
+}
+
+private fun collectInlineText(parent: Node): String {
+    val builder = StringBuilder()
+    appendInlineText(parent, builder)
+    return builder.toString()
+}
+
+private fun appendInlineText(node: Node, builder: StringBuilder) {
+    when (node) {
+        is MarkdownText -> builder.append(node.literal)
+        is MarkdownCode -> builder.append(node.literal)
+        is SoftLineBreak -> builder.append(' ')
+        is HardLineBreak -> builder.append('\n')
+        is FencedCodeBlock -> builder.append(node.literal)
+        is IndentedCodeBlock -> builder.append(node.literal)
+    }
+
+    var child = node.firstChild
+    while (child != null) {
+        appendInlineText(child, builder)
+        child = child.next
+    }
+}
+
+private fun normalizePdfText(text: String): String {
+    return text
+        .lines()
+        .joinToString("\n") { line -> line.replace(Regex("[ \\t]+"), " ").trim() }
+        .trim()
+}
+
+private fun preparePdfBlocks(
+    blocks: List<MarkdownPdfBlock>,
+    contentWidth: Int
+): List<PreparedPdfBlock> {
+    val prepared = mutableListOf<PreparedPdfBlock>()
+    var cursorY = 0
+    blocks.forEach { block ->
+        val style = pdfBlockStyle(block)
+        cursorY += style.marginTop
+        if (block.kind == PdfBlockKind.RULE) {
+            prepared += PreparedPdfBlock(block, null, style, cursorY, 32)
+            cursorY += 32 + style.marginBottom
+        } else {
+            val layoutWidth = (contentWidth - style.insetStart - style.insetEnd - style.extraPadding * 2)
+                .coerceAtLeast(120)
+            val layout = StaticLayout.Builder
+                .obtain(block.text, 0, block.text.length, textPaintForStyle(style), layoutWidth)
+                .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                .setLineSpacing(8f, 1.08f)
+                .setIncludePad(false)
+                .build()
+            val height = layout.height + style.extraPadding * 2
+            prepared += PreparedPdfBlock(block, layout, style, cursorY, height)
+            cursorY += height + style.marginBottom
+        }
+    }
+    return prepared
+}
+
+private fun pdfBlockStyle(block: MarkdownPdfBlock): PdfBlockStyle {
+    val textColor = AndroidColor.rgb(18, 35, 59)
+    val accent = AndroidColor.rgb(24, 89, 184)
+    return when (block.kind) {
+        PdfBlockKind.HEADING -> {
+            val size = when (block.level) {
+                1 -> 58f
+                2 -> 48f
+                else -> 40f
+            }
+            PdfBlockStyle(
+                textSize = size,
+                color = textColor,
+                typeface = Typeface.create(pdfTypefaceFamily(block.kind), Typeface.BOLD),
+                isBold = true,
+                marginTop = if (block.level == 1) 10 else 24,
+                marginBottom = 24
+            )
+        }
+
+        PdfBlockKind.QUOTE -> PdfBlockStyle(
+            textSize = 34f,
+            color = AndroidColor.rgb(83, 121, 167),
+            typeface = Typeface.create(pdfTypefaceFamily(block.kind), Typeface.NORMAL),
+            marginTop = 8,
+            marginBottom = 22,
+            insetStart = 26,
+            backgroundColor = AndroidColor.rgb(217, 232, 255),
+            accentColor = accent,
+            extraPadding = 18
+        )
+
+        PdfBlockKind.CODE -> PdfBlockStyle(
+            textSize = 30f,
+            color = textColor,
+            typeface = Typeface.create(pdfTypefaceFamily(block.kind), Typeface.NORMAL),
+            marginTop = 8,
+            marginBottom = 24,
+            backgroundColor = AndroidColor.rgb(244, 248, 253),
+            accentColor = AndroidColor.rgb(211, 224, 240),
+            extraPadding = 18
+        )
+
+        PdfBlockKind.LIST_ITEM -> PdfBlockStyle(
+            textSize = 34f,
+            color = textColor,
+            typeface = Typeface.create(pdfTypefaceFamily(block.kind), Typeface.NORMAL),
+            marginBottom = 12,
+            insetStart = 18
+        )
+
+        PdfBlockKind.RULE -> PdfBlockStyle(
+            textSize = 1f,
+            color = textColor,
+            typeface = Typeface.create(pdfTypefaceFamily(block.kind), Typeface.NORMAL),
+            marginTop = 16,
+            marginBottom = 20,
+            accentColor = AndroidColor.rgb(215, 224, 231)
+        )
+
+        PdfBlockKind.PARAGRAPH -> PdfBlockStyle(
+            textSize = 36f,
+            color = textColor,
+            typeface = Typeface.create(pdfTypefaceFamily(block.kind), Typeface.NORMAL),
+            marginBottom = 22
+        )
+    }
+}
+
+private fun textPaintForStyle(style: PdfBlockStyle): TextPaint {
+    return TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = style.color
+        textSize = style.textSize
+        typeface = style.typeface
+        isFakeBoldText = style.isBold
+    }
+}
+
+private fun drawPdfPageBitmap(
+    pdfCanvas: Canvas,
+    pageWidth: Int,
+    pageHeight: Int,
+    margin: Int,
+    contentWidth: Int,
+    pageBodyHeight: Int,
+    pageIndex: Int,
+    blocks: List<PreparedPdfBlock>
+) {
+    val bitmap = Bitmap.createBitmap(pageWidth, pageHeight, Bitmap.Config.ARGB_8888)
+    try {
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(AndroidColor.WHITE)
+        canvas.save()
+        canvas.translate(margin.toFloat(), margin.toFloat())
+        canvas.clipRect(0, 0, contentWidth, pageBodyHeight)
+        val pageTop = pageIndex * pageBodyHeight
+        val pageBottom = pageTop + pageBodyHeight
+        blocks
+            .filter { it.top < pageBottom && it.top + it.height > pageTop }
+            .forEach { drawPreparedPdfBlock(canvas, it, pageTop, contentWidth) }
+        canvas.restore()
+        pdfCanvas.drawBitmap(bitmap, 0f, 0f, null)
+    } finally {
+        bitmap.recycle()
+    }
+}
+
+private fun drawPreparedPdfBlock(
+    canvas: Canvas,
+    prepared: PreparedPdfBlock,
+    pageTop: Int,
+    contentWidth: Int
+) {
+    val y = prepared.top - pageTop
+    val style = prepared.style
+    when (prepared.block.kind) {
+        PdfBlockKind.RULE -> {
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = style.accentColor ?: AndroidColor.rgb(215, 224, 231)
+                strokeWidth = 2f
+            }
+            canvas.drawLine(0f, (y + 16).toFloat(), contentWidth.toFloat(), (y + 16).toFloat(), paint)
+        }
+
+        else -> {
+            style.backgroundColor?.let { color ->
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    this.color = color
+                    this.style = Paint.Style.FILL
+                }
+                val left = style.insetStart.toFloat()
+                val right = (contentWidth - style.insetEnd).toFloat()
+                canvas.drawRoundRect(
+                    left,
+                    y.toFloat(),
+                    right,
+                    (y + prepared.height).toFloat(),
+                    20f,
+                    20f,
+                    paint
+                )
+            }
+            style.accentColor?.takeIf { prepared.block.kind == PdfBlockKind.QUOTE }?.let { color ->
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    this.color = color
+                    this.style = Paint.Style.FILL
+                }
+                canvas.drawRect(
+                    style.insetStart.toFloat(),
+                    y.toFloat(),
+                    (style.insetStart + 8).toFloat(),
+                    (y + prepared.height).toFloat(),
+                    paint
+                )
+            }
+            prepared.layout?.let { layout ->
+                canvas.save()
+                canvas.translate(
+                    (style.insetStart + style.extraPadding).toFloat(),
+                    (y + style.extraPadding).toFloat()
+                )
+                layout.draw(canvas)
+                canvas.restore()
+            }
+        }
+    }
 }
 
 private fun renderMarkdownHtml(markdown: String): String {

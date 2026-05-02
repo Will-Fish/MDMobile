@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -79,9 +80,12 @@ fun FileBrowserScreen(
     var renameTarget by remember { mutableStateOf<MarkdownFile?>(null) }
     var renameDraftName by remember { mutableStateOf("") }
     var renameError by remember { mutableStateOf<String?>(null) }
+    var deleteTarget by remember { mutableStateOf<MarkdownFile?>(null) }
 
+    val context = LocalContext.current
     val isPreviewMode = LocalInspectionMode.current
-    val resolvedPath = currentPath ?: defaultFolder
+    val appDocumentFolder = remember(context) { FileUtils.getAppDocumentDirectory(context).absolutePath }
+    val resolvedPath = currentPath ?: defaultFolder ?: appDocumentFolder
     val emptyFileNameMessage = stringResource(R.string.empty_file_name)
     val invalidFileNameMessage = stringResource(R.string.invalid_file_name)
     val fileNotFoundMessage = stringResource(R.string.file_not_found)
@@ -93,14 +97,13 @@ fun FileBrowserScreen(
         isLoading = true
         files = if (isPreviewMode) {
             listOf(
-                MarkdownFile("Projects", "/sdcard/Documents/Projects", 0, Date(), true),
-                MarkdownFile("README.md", "/sdcard/Documents/README.md", 2_048, Date(), false),
-                MarkdownFile("Daily", "/sdcard/Documents/Daily", 0, Date(), true),
-                MarkdownFile("meeting-notes.md", "/sdcard/Documents/meeting-notes.md", 4_096, Date(), false)
+                MarkdownFile("README.md", "/data/user/0/com.example.mdmobile/files/md_files/README.md", 2_048, Date(), false),
+                MarkdownFile("export.html", "/data/user/0/com.example.mdmobile/files/md_files/export.html", 4_096, Date(), false),
+                MarkdownFile("archive.pdf", "/data/user/0/com.example.mdmobile/files/md_files/archive.pdf", 32_768, Date(), false)
             )
         } else {
             withContext(Dispatchers.IO) {
-                FileUtils.filterMarkdownFiles(FileUtils.listFilesInDirectory(resolvedPath))
+                FileUtils.filterDocumentFiles(FileUtils.listFilesInDirectory(resolvedPath))
             }
         }
         isLoading = false
@@ -158,7 +161,7 @@ fun FileBrowserScreen(
             )
         },
         floatingActionButton = {
-            val targetDirectory = resolvedPath ?: FileUtils.getRecommendedRootDirectory().absolutePath
+            val targetDirectory = resolvedPath
             FloatingActionButton(
                 onClick = { showCreateDialog = true },
                 containerColor = MaterialTheme.colorScheme.primary,
@@ -258,6 +261,11 @@ fun FileBrowserScreen(
                                         }
                                     } else {
                                         null
+                                    },
+                                    onDeleteClick = if (file.isSupportedDocumentFile) {
+                                        { deleteTarget = file }
+                                    } else {
+                                        null
                                     }
                                 )
                             }
@@ -299,6 +307,17 @@ fun FileBrowserScreen(
             }
         }
     )
+
+    DeleteFileDialog(
+        file = deleteTarget,
+        onDismiss = { deleteTarget = null },
+        onConfirm = { file ->
+            if (FileUtils.deleteDocumentFile(file.path)) {
+                refreshToken += 1
+            }
+            deleteTarget = null
+        }
+    )
 }
 
 @Composable
@@ -338,6 +357,31 @@ private fun RenameFileDialog(
         confirmButton = {
             TextButton(onClick = { onConfirm(file) }) {
                 Text(stringResource(R.string.rename_file))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+@Composable
+private fun DeleteFileDialog(
+    file: MarkdownFile?,
+    onDismiss: () -> Unit,
+    onConfirm: (MarkdownFile) -> Unit
+) {
+    if (file == null) return
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("删除文件") },
+        text = { Text("确定要删除“${file.name}”吗？此操作无法撤销。") },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(file) }) {
+                Text("删除")
             }
         },
         dismissButton = {

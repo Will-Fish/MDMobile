@@ -45,7 +45,8 @@ fun FileItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     extraLabel: String? = null,
-    onRenameClick: (() -> Unit)? = null
+    onRenameClick: (() -> Unit)? = null,
+    onDeleteClick: (() -> Unit)? = null
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -103,7 +104,7 @@ fun FileItem(
                     modifier = Modifier.padding(top = 4.dp)
                 )
             }
-            if (onRenameClick != null) {
+            if (onRenameClick != null || onDeleteClick != null) {
                 Box {
                     IconButton(onClick = { showMenu = true }) {
                         Icon(
@@ -115,13 +116,24 @@ fun FileItem(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false }
                     ) {
-                        DropdownMenuItem(
-                            text = { Text("重命名") },
-                            onClick = {
-                                showMenu = false
-                                onRenameClick()
-                            }
-                        )
+                        if (onRenameClick != null) {
+                            DropdownMenuItem(
+                                text = { Text("重命名") },
+                                onClick = {
+                                    showMenu = false
+                                    onRenameClick()
+                                }
+                            )
+                        }
+                        if (onDeleteClick != null) {
+                            DropdownMenuItem(
+                                text = { Text("删除") },
+                                onClick = {
+                                    showMenu = false
+                                    onDeleteClick()
+                                }
+                            )
+                        }
                     }
                 }
             }

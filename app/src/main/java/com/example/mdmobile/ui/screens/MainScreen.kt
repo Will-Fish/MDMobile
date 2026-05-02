@@ -1,6 +1,5 @@
 package com.example.mdmobile.ui.screens
 
-import android.os.Environment
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -117,6 +116,8 @@ private fun MainNavHost(
     onUpdateFontSize: (Int) -> Unit,
     onUpdateDefaultFolder: (String?) -> Unit
 ) {
+    val appDocumentFolder = FileUtils.getAppDocumentDirectory(LocalContext.current).absolutePath
+
     NavHost(
         navController = navController,
         startDestination = BottomNavItem.HOME.route
@@ -138,7 +139,7 @@ private fun MainNavHost(
                 onQuickNoteClick = {
                     navController.navigate(
                         readerRoute(
-                            path = buildDraftPath(userPreferences.defaultFolder),
+                            path = buildDraftPath(userPreferences.defaultFolder, appDocumentFolder),
                             isNewFile = true
                         )
                     )
@@ -149,7 +150,7 @@ private fun MainNavHost(
         composable(BottomNavItem.FILES.route) {
             FileBrowserScreen(
                 currentPath = userPreferences.defaultFolder,
-                defaultFolder = userPreferences.defaultFolder,
+                defaultFolder = userPreferences.defaultFolder ?: appDocumentFolder,
                 onFileClick = { file -> openMarkdownTarget(navController, file) },
                 onNavigateUp = {
                     navController.navigate(BottomNavItem.HOME.route) {
@@ -180,7 +181,7 @@ private fun MainNavHost(
             val path = backStackEntry.arguments?.getString("path")?.decode()
             FileBrowserScreen(
                 currentPath = path,
-                defaultFolder = userPreferences.defaultFolder,
+                defaultFolder = userPreferences.defaultFolder ?: appDocumentFolder,
                 onFileClick = { file -> openMarkdownTarget(navController, file) },
                 onNavigateUp = { navController.navigateUp() },
                 onBookmarksClick = { navController.navigate(BottomNavItem.BOOKMARKS.route) },
@@ -265,10 +266,10 @@ internal fun readerRoute(path: String, isNewFile: Boolean = false): String {
     return "reader/${path.encode()}?new=$isNewFile"
 }
 
-private fun buildDraftPath(preferredDirectory: String?): String {
+private fun buildDraftPath(preferredDirectory: String?, fallbackDirectory: String): String {
     val directory = preferredDirectory
         ?.takeIf { it.isNotBlank() }
-        ?: Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).absolutePath
+        ?: fallbackDirectory
     val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.getDefault()).format(Date())
     return File(directory, "note-$timestamp.md").absolutePath
 }
