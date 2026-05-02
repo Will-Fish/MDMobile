@@ -1,12 +1,15 @@
 package com.example.mdmobile.ui.screens
 
 import android.content.Intent
+import android.graphics.pdf.PdfDocument
 import android.net.Uri
+import android.view.View
 import android.webkit.MimeTypeMap
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -49,7 +52,6 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Preview
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Title
@@ -100,7 +102,6 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mdmobile.R
 import com.example.mdmobile.data.model.UserPreferences
-import com.example.mdmobile.ui.components.MarkdownRenderer
 import com.example.mdmobile.ui.components.TyporaEditorPane
 import com.example.mdmobile.utils.FileUtils
 import com.example.mdmobile.viewmodels.BookmarkViewModel
@@ -114,12 +115,6 @@ import org.commonmark.renderer.html.HtmlRenderer
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
-
-private enum class ReaderWorkspaceMode {
-    WRITE,
-    PREVIEW,
-    SPLIT
-}
 
 private data class MarkdownTool(
     val label: String,
@@ -151,7 +146,6 @@ private val TextFieldValueSaver = Saver<TextFieldValue, List<Any>>(
 fun ReaderScreen(
     filePath: String?,
     userPreferences: UserPreferences,
-    startInEditMode: Boolean,
     isNewFile: Boolean,
     onBack: () -> Unit,
     onFontSizeChange: (Int) -> Unit
@@ -174,9 +168,6 @@ fun ReaderScreen(
     var showShareMenu by remember { mutableStateOf(false) }
     var hasLoadError by remember { mutableStateOf(false) }
     var originalContent by remember(filePath) { mutableStateOf("") }
-    var workspaceMode by rememberSaveable(filePath) {
-        mutableStateOf(if (startInEditMode) ReaderWorkspaceMode.WRITE else ReaderWorkspaceMode.PREVIEW)
-    }
     var selectedAnchor by remember(filePath) { mutableStateOf<String?>(null) }
     var lastSavedAt by rememberSaveable(filePath) { mutableLongStateOf(0L) }
     var collapsedAnchors by rememberSaveable(filePath) { mutableStateOf(setOf<String>()) }
@@ -261,23 +252,16 @@ fun ReaderScreen(
         }
     }
 
-    fun cycleWorkspaceMode(canSplit: Boolean) {
-        workspaceMode = when (workspaceMode) {
-            ReaderWorkspaceMode.WRITE -> ReaderWorkspaceMode.PREVIEW
-            ReaderWorkspaceMode.PREVIEW -> if (canSplit) ReaderWorkspaceMode.SPLIT else ReaderWorkspaceMode.WRITE
-            ReaderWorkspaceMode.SPLIT -> ReaderWorkspaceMode.WRITE
-        }
-    }
-
     fun exportHtml() {
         if (currentPath.isBlank()) return
         val markdownSnapshot = editorValue.text
         val sourceFile = File(currentPath)
-        val targetFile = File(sourceFile.parentFile ?: return, "${sourceFile.nameWithoutExtension}.html")
+        val targetFile = exportTargetFile(sourceFile, "html")
         scope.launch {
             val success = withContext(Dispatchers.IO) {
-                targetFile.writeText(renderMarkdownHtml(markdownSnapshot), Charsets.UTF_8)
-                true
+                runCatching {
+                    targetFile.writeText(renderMarkdownHtml(markdownSnapshot), Charsets.UTF_8)
+                }.isSuccess
             }
             if (success) {
                 Toast.makeText(context, "已导出到 ${targetFile.name}", Toast.LENGTH_SHORT).show()
@@ -285,6 +269,29 @@ fun ReaderScreen(
                 Toast.makeText(context, "导出失败", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    fun exportPdf() {
+        if (currentPath.isBlank()) return
+        val markdownSnapshot = editorValue.text
+        val sourceFile = File(currentPath)
+        val targetFile = exportTargetFile(sourceFile, "pdf")
+        val webView = WebView(context)
+        webView.settings.defaultTextEncodingName = "UTF-8"
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView, url: String?) {
+                view.post {
+                    val success = writeWebViewPdf(view, targetFile)
+                    Toast.makeText(
+                        context,
+                        if (success) "已导出到 ${targetFile.name}" else "导出失败",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    view.destroy()
+                }
+            }
+        }
+        webView.loadDataWithBaseURL("file:///", renderMarkdownHtml(markdownSnapshot), "text/html", "UTF-8", null)
     }
 
     fun shareMarkdown() {
@@ -400,13 +407,7 @@ fun ReaderScreen(
                 )
             )
     ) {
-        val canSplit = maxWidth >= 980.dp
         val showOutlineSidebar = maxWidth >= 1180.dp && headings.isNotEmpty()
-        val effectiveMode = if (workspaceMode == ReaderWorkspaceMode.SPLIT && !canSplit) {
-            ReaderWorkspaceMode.WRITE
-        } else {
-            workspaceMode
-        }
         val visibleHeadings = remember(headings, collapsedAnchors, outlineSearchQuery) {
             buildVisibleHeadings(headings, collapsedAnchors, outlineSearchQuery)
         }
@@ -451,7 +452,6 @@ fun ReaderScreen(
                         }
                     },
                     actions = {
-                        val canUseHistory = effectiveMode != ReaderWorkspaceMode.PREVIEW
                         IconButton(
                             onClick = {
                                 if (undoStack.isNotEmpty()) {
@@ -459,7 +459,7 @@ fun ReaderScreen(
                                     editorValue = undoStack.removeAt(undoStack.lastIndex)
                                 }
                             },
-                            enabled = canUseHistory && undoStack.isNotEmpty()
+                            enabled = undoStack.isNotEmpty()
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.Undo,
@@ -473,7 +473,7 @@ fun ReaderScreen(
                                     editorValue = redoStack.removeAt(redoStack.lastIndex)
                                 }
                             },
-                            enabled = canUseHistory && redoStack.isNotEmpty()
+                            enabled = redoStack.isNotEmpty()
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.Redo,
@@ -493,12 +493,6 @@ fun ReaderScreen(
                                     contentDescription = if (isBookmarked) "移除书签" else "添加书签"
                                 )
                             }
-                        }
-                        IconButton(onClick = { cycleWorkspaceMode(canSplit) }) {
-                            Icon(
-                                imageVector = Icons.Default.Preview,
-                                contentDescription = "切换预览"
-                            )
                         }
                         IconButton(onClick = { showFontMenu = true }) {
                             Icon(Icons.Default.FontDownload, contentDescription = "字体大小")
@@ -550,6 +544,17 @@ fun ReaderScreen(
                                         }
                                     }
                                 )
+                                DropdownMenuItem(
+                                    text = { Text("导出 PDF") },
+                                    onClick = {
+                                        showShareMenu = false
+                                        if (isDirty) {
+                                            saveDocument(onComplete = ::exportPdf)
+                                        } else {
+                                            exportPdf()
+                                        }
+                                    }
+                                )
                             }
                         }
                     },
@@ -586,10 +591,8 @@ fun ReaderScreen(
                         },
                         onHeadingClick = { heading ->
                             selectedAnchor = heading.anchorId
-                            if (effectiveMode != ReaderWorkspaceMode.PREVIEW) {
-                                val position = findHeadingCursorPosition(content, heading.lineIndex)
-                                editorValue = editorValue.copy(selection = TextRange(position))
-                            }
+                            val position = findHeadingCursorPosition(content, heading.lineIndex)
+                            editorValue = editorValue.copy(selection = TextRange(position))
                         },
                         modifier = Modifier
                             .fillMaxHeight()
@@ -603,29 +606,27 @@ fun ReaderScreen(
                         .weight(1f)
                         .animateContentSize(animationSpec = tween(280, easing = FastOutSlowInEasing))
                 ) {
-                    if (effectiveMode != ReaderWorkspaceMode.PREVIEW) {
-                        EditorToolbar(
-                            tools = inlineTools,
-                            onHeadingClick = { level ->
-                                updateEditorValue(applyHeadingTool(editorValue, level))
-                            },
-                            onListClick = { ordered ->
-                                updateEditorValue(applyListTool(editorValue, ordered))
-                            },
-                            onToolClick = { tool ->
-                                updateEditorValue(applyMarkdownTool(editorValue, tool))
-                            },
-                            onInsertImage = {
-                                imagePickerLauncher.launch(arrayOf("image/*"))
-                            }
-                        )
-                    }
+                    EditorToolbar(
+                        tools = inlineTools,
+                        onHeadingClick = { level ->
+                            updateEditorValue(applyHeadingTool(editorValue, level))
+                        },
+                        onListClick = { ordered ->
+                            updateEditorValue(applyListTool(editorValue, ordered))
+                        },
+                        onToolClick = { tool ->
+                            updateEditorValue(applyMarkdownTool(editorValue, tool))
+                        },
+                        onInsertImage = {
+                            imagePickerLauncher.launch(arrayOf("image/*"))
+                        }
+                    )
 
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
-                            .padding(top = if (effectiveMode == ReaderWorkspaceMode.PREVIEW) 0.dp else 12.dp)
+                            .padding(top = 12.dp)
                     ) {
                         when {
                             isLoading -> {
@@ -637,54 +638,6 @@ fun ReaderScreen(
                                     title = "无法加载文档",
                                     message = "请确认文件仍然存在，或者重新从文件列表打开。",
                                     modifier = Modifier.align(Alignment.Center)
-                                )
-                            }
-
-                            content.isBlank() && effectiveMode == ReaderWorkspaceMode.PREVIEW -> {
-                                ReaderMessageCard(
-                                    title = "这篇文档还是空的",
-                                    message = context.getString(R.string.reader_empty_hint),
-                                    modifier = Modifier.align(Alignment.Center)
-                                )
-                            }
-
-                            effectiveMode == ReaderWorkspaceMode.SPLIT -> {
-                                Row(
-                                    modifier = Modifier.fillMaxSize(),
-                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                                ) {
-                                    TyporaEditorPane(
-                                        value = editorValue,
-                                        onValueChange = { updateEditorValue(it) },
-                                        onFocusLost = {
-                                            if (isDirty) {
-                                                saveDocument()
-                                            }
-                                        },
-                                        fontSize = userPreferences.fontSize,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                    )
-                                    PreviewPane(
-                                        markdown = content,
-                                        fontSize = userPreferences.fontSize,
-                                        scrollToAnchor = selectedAnchor,
-                                        onCurrentAnchorChange = { selectedAnchor = it },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                    )
-                                }
-                            }
-
-                            effectiveMode == ReaderWorkspaceMode.PREVIEW -> {
-                                PreviewPane(
-                                    markdown = content,
-                                    fontSize = userPreferences.fontSize,
-                                    scrollToAnchor = selectedAnchor,
-                                    onCurrentAnchorChange = { selectedAnchor = it },
-                                    modifier = Modifier.fillMaxSize()
                                 )
                             }
 
@@ -954,46 +907,6 @@ private fun EditorToolbar(
 }
 
 @Composable
-private fun PreviewPane(
-    markdown: String,
-    fontSize: Int,
-    scrollToAnchor: String?,
-    onCurrentAnchorChange: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 5.dp)
-    ) {
-        Crossfade(
-            targetState = markdown.isBlank(),
-            modifier = Modifier.fillMaxSize(),
-            label = "preview_state"
-        ) { isBlank ->
-            if (isBlank) {
-                ReaderMessageCard(
-                    title = "预览区",
-                    message = "开始输入内容后，这里会实时显示排版效果。",
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(18.dp)
-                )
-            } else {
-                MarkdownRenderer(
-                    markdownContent = markdown,
-                    fontSize = fontSize,
-                    scrollToAnchor = scrollToAnchor,
-                    onCurrentAnchorChange = onCurrentAnchorChange,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun ReaderMessageCard(
     title: String,
     message: String,
@@ -1184,6 +1097,45 @@ private fun editorProgress(text: String, selectionEnd: Int): Float {
 
 private fun countWords(text: String): Int {
     return Regex("\\S+").findAll(text).count()
+}
+
+internal fun exportTargetFile(sourceFile: File, extension: String): File {
+    return File(sourceFile.parentFile, "${sourceFile.nameWithoutExtension}.${extension.trimStart('.')}")
+}
+
+private fun writeWebViewPdf(
+    webView: WebView,
+    targetFile: File
+): Boolean {
+    return runCatching {
+        val pageWidth = 1240
+        val pageHeight = 1754
+        val contentHeight = webView.contentHeight.coerceAtLeast(pageHeight)
+
+        webView.measure(
+            View.MeasureSpec.makeMeasureSpec(pageWidth, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(contentHeight, View.MeasureSpec.EXACTLY)
+        )
+        webView.layout(0, 0, pageWidth, contentHeight)
+
+        targetFile.parentFile?.mkdirs()
+        val document = PdfDocument()
+        try {
+            val pageCount = ((contentHeight + pageHeight - 1) / pageHeight).coerceAtLeast(1)
+            for (pageIndex in 0 until pageCount) {
+                val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageIndex + 1).create()
+                val page = document.startPage(pageInfo)
+                page.canvas.translate(0f, -(pageIndex * pageHeight).toFloat())
+                webView.draw(page.canvas)
+                document.finishPage(page)
+            }
+            targetFile.outputStream().use { output ->
+                document.writeTo(output)
+            }
+        } finally {
+            document.close()
+        }
+    }.isSuccess
 }
 
 private fun renderMarkdownHtml(markdown: String): String {

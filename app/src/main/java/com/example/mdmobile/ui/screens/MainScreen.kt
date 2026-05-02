@@ -139,7 +139,6 @@ private fun MainNavHost(
                     navController.navigate(
                         readerRoute(
                             path = buildDraftPath(userPreferences.defaultFolder),
-                            startInEditMode = true,
                             isNewFile = true
                         )
                     )
@@ -167,7 +166,6 @@ private fun MainNavHost(
                     navController.navigate(
                         readerRoute(
                             path = filePath,
-                            startInEditMode = true,
                             isNewFile = true
                         )
                     )
@@ -191,7 +189,6 @@ private fun MainNavHost(
                     navController.navigate(
                         readerRoute(
                             path = filePath,
-                            startInEditMode = true,
                             isNewFile = true
                         )
                     )
@@ -216,13 +213,9 @@ private fun MainNavHost(
         }
 
         composable(
-            route = "reader/{path}?edit={edit}&new={new}",
+            route = "reader/{path}?new={new}",
             arguments = listOf(
                 navArgument("path") { type = NavType.StringType },
-                navArgument("edit") {
-                    type = NavType.BoolType
-                    defaultValue = false
-                },
                 navArgument("new") {
                     type = NavType.BoolType
                     defaultValue = false
@@ -230,12 +223,10 @@ private fun MainNavHost(
             )
         ) { backStackEntry ->
             val path = backStackEntry.arguments?.getString("path")?.decode()
-            val startInEditMode = backStackEntry.arguments?.getBoolean("edit") == true
             val isNewFile = backStackEntry.arguments?.getBoolean("new") == true
             ReaderScreen(
                 filePath = path,
                 userPreferences = userPreferences,
-                startInEditMode = startInEditMode,
                 isNewFile = isNewFile,
                 onBack = { navController.navigateUp() },
                 onFontSizeChange = onUpdateFontSize
@@ -270,8 +261,8 @@ private fun fileRoute(path: String): String {
     return "files/${path.encode()}"
 }
 
-private fun readerRoute(path: String, startInEditMode: Boolean = false, isNewFile: Boolean = false): String {
-    return "reader/${path.encode()}?edit=$startInEditMode&new=$isNewFile"
+internal fun readerRoute(path: String, isNewFile: Boolean = false): String {
+    return "reader/${path.encode()}?new=$isNewFile"
 }
 
 private fun buildDraftPath(preferredDirectory: String?): String {

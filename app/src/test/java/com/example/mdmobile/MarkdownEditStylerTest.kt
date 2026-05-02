@@ -1,12 +1,17 @@
 package com.example.mdmobile
 
 import com.example.mdmobile.ui.components.MarkdownEditStyleKind
+import com.example.mdmobile.ui.components.MarkdownEditBlockKind
+import com.example.mdmobile.ui.components.buildMarkdownEditBlockPlan
 import com.example.mdmobile.ui.components.shouldConcealInTyporaView
 import com.example.mdmobile.ui.components.buildMarkdownEditStylePlan
+import com.example.mdmobile.ui.components.continueMarkdownListOnEnter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 
 class MarkdownEditStylerTest {
     @Test
@@ -88,6 +93,76 @@ class MarkdownEditStylerTest {
 
         assertTrue(inactiveHeadingMarker.shouldConcealInTyporaView(plan.activeLine))
         assertFalse(activeLinkDestination.shouldConcealInTyporaView(plan.activeLine))
+    }
+
+    @Test
+    fun inactiveListMarkersStayVisibleInTyporaView() {
+        val markdown = "- 第一项\n普通段落"
+        val cursor = markdown.indexOf("普通")
+        val plan = buildMarkdownEditStylePlan(markdown, cursor)
+
+        val listMarker = plan.ranges.single { it.kind == MarkdownEditStyleKind.ListMarker }
+
+        assertFalse(listMarker.shouldConcealInTyporaView(plan.activeLine))
+    }
+
+    @Test
+    fun enterContinuesUnorderedList() {
+        val previous = TextFieldValue("- 第一项", selection = TextRange(5))
+        val proposed = TextFieldValue("- 第一项\n", selection = TextRange(6))
+
+        val continued = continueMarkdownListOnEnter(previous, proposed)
+
+        assertEquals("- 第一项\n- ", continued.text)
+        assertEquals(TextRange(8), continued.selection)
+    }
+
+    @Test
+    fun enterIncrementsOrderedList() {
+        val previous = TextFieldValue("9. 第九项", selection = TextRange(6))
+        val proposed = TextFieldValue("9. 第九项\n", selection = TextRange(7))
+
+        val continued = continueMarkdownListOnEnter(previous, proposed)
+
+        assertEquals("9. 第九项\n10. ", continued.text)
+        assertEquals(TextRange(11), continued.selection)
+    }
+
+    @Test
+    fun enterOnEmptyListItemExitsList() {
+        val previous = TextFieldValue("正文\n- ", selection = TextRange(5))
+        val proposed = TextFieldValue("正文\n- \n", selection = TextRange(6))
+
+        val continued = continueMarkdownListOnEnter(previous, proposed)
+
+        assertEquals("正文\n\n", continued.text)
+        assertEquals(TextRange(4), continued.selection)
+    }
+
+    @Test
+    fun detectsCodeQuoteAndDividerBlocks() {
+        val markdown = "段落\n```kotlin\nprintln(1)\n```\n> 引用\n> 继续\n---\n尾巴"
+
+        val blocks = buildMarkdownEditBlockPlan(markdown)
+
+        val code = blocks.single { it.kind == MarkdownEditBlockKind.Code }
+        val quote = blocks.single { it.kind == MarkdownEditBlockKind.Blockquote }
+        val divider = blocks.single { it.kind == MarkdownEditBlockKind.Divider }
+        assertEquals("println(1)", code.copyText)
+        assertEquals(markdown.indexOf("```kotlin"), code.start)
+        assertEquals(markdown.indexOf("> 引用"), quote.start)
+        assertEquals(markdown.indexOf("---"), divider.start)
+    }
+
+    @Test
+    fun dividerMarkerIsConcealedEvenWhenCursorIsOnDividerLine() {
+        val markdown = "正文\n---\n尾巴"
+        val cursor = markdown.indexOf("---") + 1
+
+        val plan = buildMarkdownEditStylePlan(markdown, cursor)
+        val divider = plan.ranges.single { it.kind == MarkdownEditStyleKind.Divider }
+
+        assertTrue(divider.shouldConcealInTyporaView(plan.activeLine))
     }
 
     private fun com.example.mdmobile.ui.components.MarkdownEditStylePlan.hasRange(
